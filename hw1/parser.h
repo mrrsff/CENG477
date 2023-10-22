@@ -12,6 +12,7 @@ namespace parser
     struct Vec3f
     {
         float x, y, z;
+        
         Vec3f operator*(float scalar)
         {
             return Vec3f{this->x * scalar, this->y * scalar, this->z * scalar};
