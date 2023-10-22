@@ -3,7 +3,7 @@
 #include "ppm.h"
 #include "Ray.h"
 
-#define EPSILON 0.0001
+#define EPSILON 0.001
 
 using namespace parser;
 enum class ObjectType
@@ -20,14 +20,14 @@ float determinant (Vec3f a, Vec3f b, Vec3f c);
 Vec3f GetRayDirection(Camera camera, int x, int y);
 Vec3f GetFaceNormal(Ray ray, float t, Face face, Scene &scene);
 Vec3f GetSphereNormal(Ray ray, float t, Sphere sphere, Scene &scene);
-Vec3f GetTriangleNormal(Ray ray, float t, Triangle triangle, Scene &scene);
 Vec3f GetFaceNormal(Ray ray, float t, Face face, Scene &scene);
 
 float RaySphereIntersect(Ray ray, Sphere sphere, Scene &scene);
 float RayTriangleIntersect(Ray ray, Triangle triangle, Scene &scene, Camera &camera);
 float RayMeshIntersect(Ray ray, Mesh mesh, Scene &scene, Camera &camera);
 
-Vec3f GetColor(Ray ray, float t, float tmin, int material_id, Vec3f normal, ObjectType object_type, Scene &scene);
+bool RayIntersect(Ray ray, Camera &camera, Scene &scene);
+Vec3f GetColor(Ray ray, float t, int material_id, Vec3f normal, Camera &camera, Scene &scene);
 
 
 int main(int argc, char* argv[])
@@ -90,12 +90,12 @@ int main(int argc, char* argv[])
                         tmin = t;
                         material_id = triangle.material_id;
                         object_type = ObjectType::TRIANGLE;
-                        normal = GetTriangleNormal(ray, t, triangle, scene);
+                        normal = GetFaceNormal(ray, t, triangle.indices, scene);
                     }
                 }
                 if(collision)
                 {                    
-                    Vec3f color = GetColor(ray, tmin, camera.near_distance, material_id, normal, object_type, scene);
+                    Vec3f color = GetColor(ray, tmin, material_id, normal, camera, scene);
                     image[i++] = color.x; // R
                     image[i++] = color.y; // G
                     image[i++] = color.z; // B
@@ -196,17 +196,7 @@ Vec3f GetSphereNormal(Ray ray, float t, Sphere sphere, Scene &scene)
     Vec3f intersection_point = ray.getOrigin() + ray.getDirection() * t;
     Vec3f center = scene.vertex_data[sphere.center_vertex_id - 1];
     Vec3f normal = intersection_point - center;
-    return normal;
-}
-
-Vec3f GetTriangleNormal(Ray ray, float t, Triangle triangle, Scene &scene)
-{
-    Vec3f intersection_point = ray.getOrigin() + ray.getDirection() * t;
-    Vec3f v0 = scene.vertex_data[triangle.indices.v0_id - 1];
-    Vec3f v1 = scene.vertex_data[triangle.indices.v1_id - 1];
-    Vec3f v2 = scene.vertex_data[triangle.indices.v2_id - 1];
-    Vec3f normal = (v1 - v0).cross(v2 - v0);
-    return normal;
+    return normal.normalize();
 }
 Vec3f GetFaceNormal(Ray ray, float t, Face face, Scene &scene)
 {
@@ -215,10 +205,33 @@ Vec3f GetFaceNormal(Ray ray, float t, Face face, Scene &scene)
     Vec3f v1 = scene.vertex_data[face.v1_id - 1];
     Vec3f v2 = scene.vertex_data[face.v2_id - 1];
     Vec3f normal = (v1 - v0).cross(v2 - v0);
-    return normal;
+    return normal.normalize();
 }
 
-Vec3f GetColor(Ray ray, float t, float tmin, int material_id, Vec3f normal, ObjectType object_type, Scene &scene)
+bool RayIntersect(Ray ray, Camera &camera, Scene &scene)
+{
+    for (Sphere sphere: scene.spheres)
+    {
+        float t = RaySphereIntersect(ray, sphere, scene);
+        if (t > 0 && t < camera.near_distance)
+            return true;
+    }
+    for (Mesh mesh: scene.meshes)
+    {
+        float t = RayMeshIntersect(ray, mesh, scene, camera);
+        if (t > 0 && t < camera.near_distance)
+            return true;
+    }
+    for (Triangle triangle: scene.triangles)
+    {
+        float t = RayTriangleIntersect(ray, triangle, scene, camera);
+        if (t > 0 && t < camera.near_distance)
+            return true;
+    }
+    return false;
+}
+
+Vec3f GetColor(Ray ray, float t, int material_id, Vec3f normal, Camera &camera, Scene &scene)
 {
     float color_r = 0;
     float color_g = 0;
@@ -231,33 +244,35 @@ Vec3f GetColor(Ray ray, float t, float tmin, int material_id, Vec3f normal, Obje
     for (PointLight light: scene.point_lights)
     {
         Vec3f light_direction = light.position - intersection_point;
+        Vec3f l = light_direction.normalize();
+        Vec3f v = ray.getDirection().normalize() * -1;
         
         // TODO: Check if the intersection point is in shadow
-        bool inShadow;
-
+        bool inShadow = RayIntersect(Ray(intersection_point + (light_direction * scene.shadow_ray_epsilon), light_direction), camera, scene);
+        if(inShadow) continue;
 
         // Diffuse 
         float distanceFromLight_squared = light_direction.length() * light_direction.length();
-        float cos = light_direction.dot(normal);
-        if (cos < 0)
-            cos = 0;
+        float dotProduct = l.dot(normal);
+        if (dotProduct < 0)
+            dotProduct = 0;
 
-        color_r += material.diffuse.x * light.intensity.x * cos / distanceFromLight_squared;
-        color_g += material.diffuse.y * light.intensity.y * cos / distanceFromLight_squared;
-        color_b += material.diffuse.z * light.intensity.z * cos / distanceFromLight_squared;
+        color_r += material.diffuse.x * light.intensity.x * dotProduct / distanceFromLight_squared;
+        color_g += material.diffuse.y * light.intensity.y * dotProduct / distanceFromLight_squared;
+        color_b += material.diffuse.z * light.intensity.z * dotProduct / distanceFromLight_squared;
 
 
         // Specular
-        /*
-        Vec3f h = (light_direction + ray.getDirection()) / (light_direction + ray.getDirection()).length();
-        float cosa = h.dot(normal);
-        if (cosa < 0)
-            cosa = 0;
+        Vec3f h = (l + v) / ((l + v).length());
+        dotProduct = h.dot(normal);
+        if (dotProduct < 0)
+            dotProduct = 0;
+        float phong = pow(dotProduct, material.phong_exponent);
+
+        color_r += material.specular.x * light.intensity.x * phong / distanceFromLight_squared;
+        color_g += material.specular.y * light.intensity.y * phong / distanceFromLight_squared;
+        color_b += material.specular.z * light.intensity.z * phong / distanceFromLight_squared;
         
-        float specular_r = material.specular.x * light.intensity.x * pow(cosa, material.phong_exponent) / distanceFromLight_squared;
-        float specular_g = material.specular.y * light.intensity.y * pow(cosa, material.phong_exponent) / distanceFromLight_squared;
-        float specular_b = material.specular.z * light.intensity.z * pow(cosa, material.phong_exponent) / distanceFromLight_squared;
-        */
     }
 
     // Ambient
@@ -265,15 +280,6 @@ Vec3f GetColor(Ray ray, float t, float tmin, int material_id, Vec3f normal, Obje
     color_g += material.ambient.y * scene.ambient_light.y;
     color_b += material.ambient.z * scene.ambient_light.z;
 
-    if (object_type == ObjectType::SPHERE)
-    {
-    }
-    else if (object_type == ObjectType::MESH)
-    {
-    }
-    else if (object_type == ObjectType::TRIANGLE)
-    {
-    }
     if(color_r > 255) color_r = 255;
     if(color_g > 255) color_g = 255;
     if(color_b > 255) color_b = 255;
