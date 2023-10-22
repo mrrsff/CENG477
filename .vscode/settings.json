@@ -5,5 +5,8 @@
         "comments": false,
         "strings": false
     },
-    "editor.quickSuggestionsDelay": 10
+    "editor.quickSuggestionsDelay": 10,
+    "files.associations": {
+        "iostream": "cpp"
+    }
 }

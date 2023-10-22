@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <cmath>
 
 namespace parser
 {
@@ -11,6 +12,54 @@ namespace parser
     struct Vec3f
     {
         float x, y, z;
+        Vec3f operator*(float scalar)
+        {
+            return Vec3f{this->x * scalar, this->y * scalar, this->z * scalar};
+        };
+        Vec3f operator*(int scalar)
+        {
+            return Vec3f{this->x * scalar, this->y * scalar, this->z * scalar};
+        };
+        Vec3f operator+ (Vec3f other)
+        {
+            return Vec3f{this->x + other.x, this->y + other.y, this->z + other.z};
+        };
+        Vec3f operator- (Vec3f other)
+        {
+            return Vec3f{this->x - other.x, this->y - other.y, this->z - other.z};
+        };
+        float length()
+        {
+            return sqrt(this->x * this->x + this->y * this->y + this->z * this->z);
+        };
+        Vec3f normalize()
+        {
+            float length = this->length();
+            return Vec3f{this->x / length, this->y / length, this->z / length};
+        };
+        float dot(Vec3f other)
+        {
+            return this->x * other.x + this->y * other.y + this->z * other.z;
+        };
+        Vec3f cross(Vec3f other)
+        {
+            return Vec3f{this->y * other.z - this->z * other.y, this->z * other.x - this->x * other.z, this->x * other.y - this->y * other.x};
+        };
+        float operator[](int index)
+        {
+            if (index == 0)
+                return this->x;
+            else if (index == 1)
+                return this->y;
+            else if (index == 2)
+                return this->z;
+            else
+                return 0;
+        };
+        bool operator==(Vec3f other) // 
+        {
+            return (this->x - other.x < 0.0001 && this->y - other.y < 0.0001 && this->z - other.z < 0.0001);
+        };
     };
 
     struct Vec3i

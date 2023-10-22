@@ -1,14 +1,18 @@
 #include <iostream>
 #include "parser.h"
 #include "ppm.h"
-#include <random>
+#include "Ray.h"
+
+using namespace parser;
 
 typedef unsigned char RGB[3];
+
+Vec3f GetRayDirection(Camera camera, int x, int y);
 
 int main(int argc, char* argv[])
 {
     // Sample usage for reading an XML scene file
-    parser::Scene scene;
+    Scene scene;
 
     scene.loadFromXml(argv[1]);
 
@@ -18,6 +22,7 @@ int main(int argc, char* argv[])
     //
     // Normally, you would be running your ray tracing
     // code here to produce the desired image.
+
 
     const RGB BAR_COLOR[8] =
     {
@@ -36,19 +41,49 @@ int main(int argc, char* argv[])
 
     unsigned char* image = new unsigned char [width * height * 3]; // 3 channels per pixel (RGB)
 
-    for (parser::Camera camera : scene.cameras)
+    for (Camera camera : scene.cameras)
     {
         int i = 0; 
         for (int y = 0; y < height; ++y)
         {
             for (int x = 0; x < width; ++x)
             {
-                image[i++] = rand() % 255; // R
-                image[i++] = rand() % 255; // G
-                image[i++] = rand() % 255; // B
+                Ray ray = Ray(camera.position, GetRayDirection(camera, x, y));
+
+                // TODO: Check collision with objects
+                bool collision = false;
+                float tmin = INFINITY;
+                for (Sphere sphere: scene.spheres)
+                {
+                    
+                }
+                for (Mesh mesh: scene.meshes)
+                {
+                    
+                }
+
+                image[i++] = scene.background_color.x; // R
+                image[i++] = scene.background_color.y; // G
+                image[i++] = scene.background_color.z; // B
             }
         }
 
         write_ppm(camera.image_name.c_str(), image, width, height);        
     }
+}
+
+Vec3f GetRayDirection(Camera camera, int x, int y)
+{
+    // v = Camera up vector
+    // -w = Camera gaze vector
+    // u = cross(v,-w) 
+
+    Vec3f u = camera.up.cross(camera.gaze * -1);
+    Vec3f m = camera.position + camera.gaze * camera.near_distance;
+    Vec3f q = m + (u * -1) + (camera.up * 1);
+    float su = (x + 0.5) * 2 / camera.image_width;
+    float sv = (y + 0.5) * 2 / camera.image_height;
+    Vec3f s = q + (u * sv) - (camera.up * sv);
+    Vec3f d = s - camera.position;
+    return d;
 }

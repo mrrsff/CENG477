@@ -1,0 +1,23 @@
+#include "Ray.h"
+#include "parser.h"
+using namespace parser;
+
+Ray::Ray(Vec3f origin, Vec3f direction)
+{
+    this->origin = origin;
+    this->direction = direction;
+}
+
+Ray::~Ray()
+{
+}
+
+Vec3f Ray::getDirection()
+{
+    return this->direction;
+}
+
+Vec3f Ray::getOrigin()
+{
+    return this->origin;
+}

@@ -1,0 +1,16 @@
+#include "parser.h"
+using namespace parser;
+
+class Ray
+{
+    private:
+        Vec3f origin;
+        Vec3f direction;
+    public:
+        Ray(Vec3f origin, Vec3f direction);
+        ~Ray();
+        Vec3f getOrigin();
+        Vec3f getDirection();
+        
+};
+
