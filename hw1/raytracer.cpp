@@ -1,6 +1,7 @@
 #include <iostream>
 #include "parser.h"
 #include "ppm.h"
+#include <random>
 
 typedef unsigned char RGB[3];
 
@@ -33,20 +34,21 @@ int main(int argc, char* argv[])
     int width = 640, height = 480;
     int columnWidth = width / 8;
 
-    unsigned char* image = new unsigned char [width * height * 3];
+    unsigned char* image = new unsigned char [width * height * 3]; // 3 channels per pixel (RGB)
 
-    int i = 0;
-    for (int y = 0; y < height; ++y)
+    for (parser::Camera camera : scene.cameras)
     {
-        for (int x = 0; x < width; ++x)
+        int i = 0; 
+        for (int y = 0; y < height; ++y)
         {
-            int colIdx = x / columnWidth;
-            image[i++] = BAR_COLOR[colIdx][0];
-            image[i++] = BAR_COLOR[colIdx][1];
-            image[i++] = BAR_COLOR[colIdx][2];
+            for (int x = 0; x < width; ++x)
+            {
+                image[i++] = rand() % 255; // R
+                image[i++] = rand() % 255; // G
+                image[i++] = rand() % 255; // B
+            }
         }
+
+        write_ppm(camera.image_name.c_str(), image, width, height);        
     }
-
-    write_ppm("test.ppm", image, width, height);
-
 }
