@@ -4,67 +4,84 @@
 #include "Ray.h"
 
 using namespace parser;
+enum class ObjectType
+{
+    SPHERE,
+    MESH
+};
 
 typedef unsigned char RGB[3];
 
 Vec3f GetRayDirection(Camera camera, int x, int y);
+float RaySphereIntersect(Ray ray, Sphere sphere, Scene &scene);
 
 int main(int argc, char* argv[])
 {
-    // Sample usage for reading an XML scene file
     Scene scene;
 
     scene.loadFromXml(argv[1]);
 
-    // The code below creates a test pattern and writes
-    // it to a PPM file to demonstrate the usage of the
-    // ppm_write function.
-    //
-    // Normally, you would be running your ray tracing
-    // code here to produce the desired image.
-
-
-    const RGB BAR_COLOR[8] =
-    {
-        { 255, 255, 255 },  // 100% White
-        { 255, 255,   0 },  // Yellow
-        {   0, 255, 255 },  // Cyan
-        {   0, 255,   0 },  // Green
-        { 255,   0, 255 },  // Magenta
-        { 255,   0,   0 },  // Red
-        {   0,   0, 255 },  // Blue
-        {   0,   0,   0 },  // Black
-    };
-
-    int width = 640, height = 480;
-    int columnWidth = width / 8;
-
-    unsigned char* image = new unsigned char [width * height * 3]; // 3 channels per pixel (RGB)
-
     for (Camera camera : scene.cameras)
     {
+        int width = camera.image_width;
+        int height = camera.image_height;
+
+        unsigned char* image = new unsigned char [width * height * 3]; // 3 channels per pixel (RGB)
+        
         int i = 0; 
         for (int y = 0; y < height; ++y)
         {
             for (int x = 0; x < width; ++x)
             {
                 Ray ray = Ray(camera.position, GetRayDirection(camera, x, y));
-
-                // TODO: Check collision with objects
                 bool collision = false;
                 float tmin = INFINITY;
+                int material_id = 0;
                 for (Sphere sphere: scene.spheres)
                 {
-                    
+                    float t = RaySphereIntersect(ray, sphere, scene);
+                    if (t > 0 && t < tmin)
+                    {
+                        collision = true;
+                        tmin = t;
+                        material_id = sphere.material_id;
+                    }
                 }
                 for (Mesh mesh: scene.meshes)
                 {
-                    
+                    float t = -1; // TODO: Calculate t
+                    if (t > 0 && t < tmin)
+                    {
+                        collision = true;
+                        tmin = t;
+                        material_id = mesh.material_id;
+                    }
                 }
-
-                image[i++] = scene.background_color.x; // R
-                image[i++] = scene.background_color.y; // G
-                image[i++] = scene.background_color.z; // B
+                for (Triangle triangle: scene.triangles)
+                {
+                    float t = -1; // TODO: Calculate t
+                    if (t > 0 && t < tmin)
+                    {
+                        collision = true;
+                        tmin = t;
+                        material_id = triangle.material_id;
+                    }
+                }
+                if(collision)
+                {
+                    float r = scene.materials[material_id].ambient.x;
+                    float g = scene.materials[material_id].ambient.y;
+                    float b = scene.materials[material_id].ambient.z;
+                    image[i++] = r; // R
+                    image[i++] = g; // G
+                    image[i++] = b; // B
+                }
+                else
+                {
+                    image[i++] = scene.background_color.x; // R
+                    image[i++] = scene.background_color.y; // G
+                    image[i++] = scene.background_color.z; // B
+                }
             }
         }
 
@@ -83,7 +100,25 @@ Vec3f GetRayDirection(Camera camera, int x, int y)
     Vec3f q = m + (u * -1) + (camera.up * 1);
     float su = (x + 0.5) * 2 / camera.image_width;
     float sv = (y + 0.5) * 2 / camera.image_height;
-    Vec3f s = q + (u * sv) - (camera.up * sv);
+    Vec3f s = q + (u * su) - (camera.up * sv);
     Vec3f d = s - camera.position;
     return d;
+}
+
+float RaySphereIntersect(Ray ray, Sphere sphere, Scene &scene)
+{
+    Vec3f o = ray.getOrigin();
+    Vec3f d = ray.getDirection();
+    Vec3f c = scene.vertex_data[sphere.center_vertex_id - 1];
+    float d1 = pow(d.dot(o - c), 2);
+    float d2 = -(d.dot(d)) * ((o - c).dot(o - c) - pow(sphere.radius, 2));
+    float discriminant = d1 + d2;
+
+    if(discriminant < 0) 
+        return -1;
+    
+    float t1 = ((d.dot(o - c) * -1) - pow(discriminant,0.5)) / d.dot(d);
+    float t2 = ((d.dot(o - c) * -1) + pow(discriminant,0.5)) / d.dot(d);
+
+    return t1 < t2 ? t1 : t2;
 }

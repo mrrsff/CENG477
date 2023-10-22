@@ -60,6 +60,10 @@ namespace parser
         {
             return (this->x - other.x < 0.0001 && this->y - other.y < 0.0001 && this->z - other.z < 0.0001);
         };
+        std::string toString()
+        {
+            return std::to_string(this->x) + " " + std::to_string(this->y) + " " + std::to_string(this->z);
+        };
     };
 
     struct Vec3i
@@ -99,13 +103,13 @@ namespace parser
         float phong_exponent;
     };
 
+
     struct Face
     {
         int v0_id;
         int v1_id;
         int v2_id;
     };
-
     struct Mesh
     {
         int material_id;
