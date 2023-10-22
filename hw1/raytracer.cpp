@@ -13,13 +13,15 @@ enum class ObjectType
 
 typedef unsigned char RGB[3];
 
-Vec3f GetSphereNormal(Ray ray, float t, Sphere sphere, Scene &scene);
-Vec3f GetTriangleNormal(Ray ray, float t, Triangle triangle, Scene &scene);
+float determinant (Vec3f a, Vec3f b, Vec3f c);
+
 Vec3f GetRayDirection(Camera camera, int x, int y);
 Vec3f GetFaceNormal(Ray ray, float t, Face face, Scene &scene);
 
 float RaySphereIntersect(Ray ray, Sphere sphere, Scene &scene);
 Vec3f GetColor(Ray ray, float t, float tmin, int material_id, Vec3f normal, ObjectType object_type, Scene &scene);
+float RayTriangleIntersect(Ray ray, Triangle triangle, Scene &scene, Camera &camera);
+float RayMeshIntersect(Ray ray, Mesh mesh, Scene &scene, Camera &camera);
 
 int main(int argc, char* argv[])
 {
@@ -61,7 +63,8 @@ int main(int argc, char* argv[])
                 }
                 for (Mesh mesh: scene.meshes)
                 {
-                    float t = -1; // TODO: Calculate t
+                    //TODO: Bounding Sphere
+                    float t = RayMeshIntersect(ray, mesh, scene, camera); // TODO: Calculate t
                     if (t > 0 && t < tmin)
                     {
                         collision = true;
@@ -72,7 +75,7 @@ int main(int argc, char* argv[])
                 }
                 for (Triangle triangle: scene.triangles)
                 {
-                    float t = -1; // TODO: Calculate t
+                    float t = RayTriangleIntersect(ray, triangle, scene, camera);
                     if (t > 0 && t < tmin)
                     {
                         collision = true;
@@ -133,6 +136,50 @@ float RaySphereIntersect(Ray ray, Sphere sphere, Scene &scene)
     float t2 = ((d.dot(o - c) * -1) + pow(discriminant,0.5)) / d.dot(d);
 
     return t1 < t2 ? t1 : t2;
+}
+
+float RayTriangleIntersect(Ray ray, Triangle triangle, Scene &scene, Camera &camera){
+    Vec3f o = ray.getOrigin();
+    Vec3f d = ray.getDirection();
+    
+    Vec3f a = scene.vertex_data[triangle.indices.v0_id - 1];
+    Vec3f b = scene.vertex_data[triangle.indices.v1_id - 1];
+    Vec3f c = scene.vertex_data[triangle.indices.v2_id - 1];
+
+    float A = determinant(a-b,a-c,d);
+    float beta = determinant(a-o,a-c,d)/A;
+    float gamma = determinant(a-b,a-o,d)/A;
+    float t = determinant(a-b,a-c,a-o)/A;
+
+    //float tmax = camera.near_distance;
+    //TODO: Tmin and Tmax (?)
+
+    if(beta >= 0 && gamma >= 0 && beta + gamma <= 1){
+        return t;
+    }
+    return -1;
+}
+
+float RayMeshIntersect(Ray ray, Mesh mesh, Scene &scene, Camera &camera){
+    Vec3f o = ray.getOrigin();
+    Vec3f d = ray.getDirection();
+    float t = INFINITY;
+    bool check = false;
+    for(Face face : mesh.faces){
+        float temp = RayTriangleIntersect(ray, Triangle{mesh.material_id,face}, scene, camera);
+        if (temp < 0) continue;
+        if (temp < t){
+            t = temp;
+            check = true;
+        }
+    }
+    //TODO: remove check
+    if(check) return t;
+    return -1;
+}
+
+float determinant (Vec3f a, Vec3f b, Vec3f c){
+    return a.x * (b.y * c.z - b.z * c.y) + a.y * (b.z * c.x - b.x * c.z) + a.z * (b.x * c.y - b.y * c.x);
 }
 
 Vec3f GetSphereNormal(Ray ray, float t, Sphere sphere, Scene &scene)
