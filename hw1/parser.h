@@ -12,6 +12,10 @@ namespace parser
     struct Vec3f
     {
         float x, y, z;
+        Vec3f operator/(float scalar)
+        {
+            return Vec3f{this->x / scalar, this->y / scalar, this->z / scalar};
+        };
         Vec3f operator*(float scalar)
         {
             return Vec3f{this->x * scalar, this->y * scalar, this->z * scalar};
@@ -102,8 +106,7 @@ namespace parser
         Vec3f mirror;
         float phong_exponent;
     };
-
-
+    
     struct Face
     {
         int v0_id;
@@ -146,6 +149,12 @@ namespace parser
 
         //Functions
         void loadFromXml(const std::string &filepath);
+
+        //Helper functions
+        Vec3f GetVertex(int vertex_id)
+        {
+            return this->vertex_data[vertex_id - 1];
+        };
     };
 }
 
