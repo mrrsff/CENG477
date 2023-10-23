@@ -18,16 +18,16 @@ typedef unsigned char RGB[3];
 float determinant (Vec3f a, Vec3f b, Vec3f c);
 
 Vec3f GetRayDirection(Camera camera, int x, int y);
-Vec3f GetFaceNormal(Ray ray, float t, Face face, Scene &scene);
-Vec3f GetSphereNormal(Ray ray, float t, Sphere sphere, Scene &scene);
-Vec3f GetFaceNormal(Ray ray, float t, Face face, Scene &scene);
+Vec3f GetFaceNormal(Ray ray, Face face, Scene &scene);
+Vec3f GetSphereNormal(Ray ray, Vec3f intersection_point, Sphere sphere, Scene &scene);
+Vec3f CreateMirrorRay(Vec3f normal, Vec3f ray);
 
 float RaySphereIntersect(Ray ray, Sphere sphere, Scene &scene);
 float RayTriangleIntersect(Ray ray, Triangle triangle, Scene &scene, Camera &camera);
-float RayMeshIntersect(Ray ray, Mesh mesh, Scene &scene, Camera &camera);
+float RayMeshIntersect(Ray ray, Mesh mesh, Scene &scene, Camera &camera, Face &face_out);
 
 bool RayIntersect(Ray ray, Camera &camera, Scene &scene);
-Vec3f GetColor(Ray ray, float t, int material_id, Vec3f normal, Camera &camera, Scene &scene);
+Vec3f GetColor(Ray ray, Vec3f intersection_point, int material_id, Vec3f normal, Camera &camera, Scene &scene, int depth);
 
 
 int main(int argc, char* argv[])
@@ -54,6 +54,7 @@ int main(int argc, char* argv[])
                 int material_id = 0;
                 ObjectType object_type;
                 Vec3f normal;
+                Vec3f intersection_point;
                 for (Sphere sphere: scene.spheres)
                 {
                     // TODO: faster intersection test with dot product and radius !!!
@@ -65,20 +66,23 @@ int main(int argc, char* argv[])
                         tmin = t;
                         material_id = sphere.material_id;
                         object_type = ObjectType::SPHERE;
-                        normal = GetSphereNormal(ray, t, sphere, scene);
+                        intersection_point = ray.getOrigin() + ray.getDirection() * t;
+                        normal = GetSphereNormal(ray, intersection_point, sphere, scene);
                     }
                 }
                 for (Mesh mesh: scene.meshes)
                 {
                     //TODO: Bounding Sphere
-                    float t = RayMeshIntersect(ray, mesh, scene, camera);
+                    Face face;
+                    float t = RayMeshIntersect(ray, mesh, scene, camera, face);
                     if (t > 0 && t < tmin)
                     {
                         collision = true;
                         tmin = t;
                         material_id = mesh.material_id;
                         object_type = ObjectType::MESH;
-                        normal = GetFaceNormal(ray, t, mesh.faces[0], scene); // TODO: Calculate normal
+                        intersection_point = ray.getOrigin() + ray.getDirection() * t;
+                        normal = GetFaceNormal(ray, face, scene);
                     }
                 }
                 for (Triangle triangle: scene.triangles)
@@ -90,12 +94,13 @@ int main(int argc, char* argv[])
                         tmin = t;
                         material_id = triangle.material_id;
                         object_type = ObjectType::TRIANGLE;
-                        normal = GetFaceNormal(ray, t, triangle.indices, scene);
+                        intersection_point = ray.getOrigin() + ray.getDirection() * t;
+                        normal = GetFaceNormal(ray, triangle.indices, scene);
                     }
                 }
                 if(collision)
                 {                    
-                    Vec3f color = GetColor(ray, tmin, material_id, normal, camera, scene);
+                    Vec3f color = GetColor(ray, intersection_point, material_id, normal, camera, scene, 0);
                     image[i++] = color.x; // R
                     image[i++] = color.y; // G
                     image[i++] = color.z; // B
@@ -122,11 +127,19 @@ Vec3f GetRayDirection(Camera camera, int x, int y)
     Vec3f u = camera.up.cross(camera.gaze * -1);
     Vec3f m = camera.position + camera.gaze * camera.near_distance;
     Vec3f q = m + (u * -1) + (camera.up * 1);
-    float su = (x + 0.5) * 2 / camera.image_width;
-    float sv = (y + 0.5) * 2 / camera.image_height;
+    float l = camera.near_plane.x;
+    float r = camera.near_plane.y;
+    float b = camera.near_plane.z;
+    float t = camera.near_plane.w;
+    float su = (x + 0.5) * (r-l) / camera.image_width;
+    float sv = (y + 0.5) * (t-b) / camera.image_height;
     Vec3f s = q + (u * su) - (camera.up * sv);
     Vec3f d = s - camera.position;
     return d;
+}
+Vec3f CreateMirrorRay(Vec3f normal, Vec3f ray)
+{
+    return ray - (normal * 2 * ray.dot(normal));
 }
 
 float RaySphereIntersect(Ray ray, Sphere sphere, Scene &scene)
@@ -169,7 +182,7 @@ float RayTriangleIntersect(Ray ray, Triangle triangle, Scene &scene, Camera &cam
     return -1;
 }
 
-float RayMeshIntersect(Ray ray, Mesh mesh, Scene &scene, Camera &camera){
+float RayMeshIntersect(Ray ray, Mesh mesh, Scene &scene, Camera &camera, Face &face_out){
     Vec3f o = ray.getOrigin();
     Vec3f d = ray.getDirection();
     float t = INFINITY;
@@ -179,6 +192,7 @@ float RayMeshIntersect(Ray ray, Mesh mesh, Scene &scene, Camera &camera){
         if (temp < 0) continue;
         if (temp < t){
             t = temp;
+            face_out = face;
             check = true;
         }
     }
@@ -191,16 +205,14 @@ float determinant (Vec3f a, Vec3f b, Vec3f c){
     return a.x * (b.y * c.z - b.z * c.y) + a.y * (b.z * c.x - b.x * c.z) + a.z * (b.x * c.y - b.y * c.x);
 }
 
-Vec3f GetSphereNormal(Ray ray, float t, Sphere sphere, Scene &scene)
+Vec3f GetSphereNormal(Ray ray, Vec3f intersection_point, Sphere sphere, Scene &scene)
 {
-    Vec3f intersection_point = ray.getOrigin() + ray.getDirection() * t;
     Vec3f center = scene.vertex_data[sphere.center_vertex_id - 1];
     Vec3f normal = intersection_point - center;
     return normal.normalize();
 }
-Vec3f GetFaceNormal(Ray ray, float t, Face face, Scene &scene)
+Vec3f GetFaceNormal(Ray ray, Face face, Scene &scene)
 {
-    Vec3f intersection_point = ray.getOrigin() + ray.getDirection() * t;
     Vec3f v0 = scene.vertex_data[face.v0_id - 1];
     Vec3f v1 = scene.vertex_data[face.v1_id - 1];
     Vec3f v2 = scene.vertex_data[face.v2_id - 1];
@@ -218,7 +230,8 @@ bool RayIntersect(Ray ray, Camera &camera, Scene &scene)
     }
     for (Mesh mesh: scene.meshes)
     {
-        float t = RayMeshIntersect(ray, mesh, scene, camera);
+        Face face;
+        float t = RayMeshIntersect(ray, mesh, scene, camera, face);
         if (t > 0 && t < camera.near_distance)
             return true;
     }
@@ -231,14 +244,13 @@ bool RayIntersect(Ray ray, Camera &camera, Scene &scene)
     return false;
 }
 
-Vec3f GetColor(Ray ray, float t, int material_id, Vec3f normal, Camera &camera, Scene &scene)
+Vec3f GetColor(Ray ray, Vec3f intersection_point, int material_id, Vec3f normal, Camera &camera, Scene &scene, int depth)
 {
     float color_r = 0;
     float color_g = 0;
     float color_b = 0;
 
     Material material = scene.materials[material_id - 1]; // Material of the object
-    Vec3f intersection_point = ray.getOrigin() + ray.getDirection() * t; // Intersection point
     float distanceFromLight = 0;
 
     for (PointLight light: scene.point_lights)
@@ -280,9 +292,23 @@ Vec3f GetColor(Ray ray, float t, int material_id, Vec3f normal, Camera &camera, 
     color_g += material.ambient.y * scene.ambient_light.y;
     color_b += material.ambient.z * scene.ambient_light.z;
 
+    // Reflection
+    Vec3f dir = CreateMirrorRay(normal, ray.getDirection());
+    Ray reflection_ray = Ray(intersection_point, dir);
+    Vec3f reflection_color = Vec3f{0,0,0};
+    if (depth < scene.max_recursion_depth && RayIntersect(reflection_ray, camera, scene))
+    {
+        reflection_color = GetColor(reflection_ray, intersection_point, material_id, normal, camera, scene, depth + 1);
+    }
+
+    color_r += material.mirror.x * reflection_color.x;
+    color_g += material.mirror.y * reflection_color.y;
+    color_b += material.mirror.z * reflection_color.z;
+
     if(color_r > 255) color_r = 255;
     if(color_g > 255) color_g = 255;
     if(color_b > 255) color_b = 255;
     
     return Vec3f{color_r, color_g, color_b};
 }
+
