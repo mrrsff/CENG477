@@ -1,3 +1,5 @@
+#pragma once //redefinition error cancel
+
 #include "parser.h"
 using namespace parser;
 
