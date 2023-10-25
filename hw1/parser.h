@@ -20,6 +20,10 @@ namespace parser
         {
             return Vec3f{this->x * scalar, this->y * scalar, this->z * scalar};
         };
+        Vec3f operator*(double scalar)
+        {
+            return Vec3f{this->x * (float)scalar, this->y * (float)scalar, this->z * (float)scalar};
+        };
         Vec3f operator*(int scalar)
         {
             return Vec3f{this->x * scalar, this->y * scalar, this->z * scalar};
