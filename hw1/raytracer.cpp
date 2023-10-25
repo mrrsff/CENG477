@@ -1,4 +1,5 @@
 #include <iostream>
+#include <cmath>
 #include "parser.h"
 #include "ppm.h"
 #include "Ray.h"
@@ -194,6 +195,8 @@ HitInfo RayIntersect(Ray ray, Camera &camera, Scene &scene)
             info.material_id = sphere.material_id;
             info.hit_point = ray.getOrigin() + ray.getDirection() * t;
             info.normal = GetSphereNormal(ray, info.hit_point, sphere, scene);
+            //hitting ray missing
+            info.hitting_ray = ray;
         }
     }
     for (Mesh mesh: scene.meshes)
@@ -209,6 +212,8 @@ HitInfo RayIntersect(Ray ray, Camera &camera, Scene &scene)
             info.material_id = mesh.material_id;
             info.hit_point = ray.getOrigin() + ray.getDirection() * t;
             info.normal = GetFaceNormal(ray, face, scene);
+            //hitting ray missing
+            info.hitting_ray = ray;
         }
     }
     for (Triangle triangle: scene.triangles)
@@ -222,6 +227,8 @@ HitInfo RayIntersect(Ray ray, Camera &camera, Scene &scene)
             info.material_id = triangle.material_id;
             info.hit_point = ray.getOrigin() + ray.getDirection() * t;
             info.normal = GetFaceNormal(ray, triangle.indices, scene);
+            //hitting ray missing
+            info.hitting_ray = ray;
         }
     }
     return info;
@@ -240,7 +247,7 @@ Vec3f GetColor(HitInfo hit_info, Camera &camera, Scene &scene, int depth)
     float color_r = 0;
     float color_g = 0;
     float color_b = 0;
-
+    
     Material material = scene.materials[material_id - 1]; // Material of the object
 
     float distanceFromLight = 0;
@@ -254,7 +261,7 @@ Vec3f GetColor(HitInfo hit_info, Camera &camera, Scene &scene, int depth)
         // TODO: Check if the intersection point is in shadow
         auto inShadow = RayIntersect(Ray(intersection_point + (light_direction * scene.shadow_ray_epsilon), light_direction), camera, scene);
         if(inShadow.is_hit == true ) continue;
-
+        
         // Diffuse 
         float distanceFromLight_squared = light_direction.length() * light_direction.length();
         float dotProduct = l.dot(normal);
@@ -264,27 +271,29 @@ Vec3f GetColor(HitInfo hit_info, Camera &camera, Scene &scene, int depth)
         color_r += material.diffuse.x * light.intensity.x * dotProduct / distanceFromLight_squared;
         color_g += material.diffuse.y * light.intensity.y * dotProduct / distanceFromLight_squared;
         color_b += material.diffuse.z * light.intensity.z * dotProduct / distanceFromLight_squared;
-
+        
 
         // Specular
         Vec3f h = (l + v) / ((l + v).length());
+        Vec3f deneme = ray.getDirection();
+        
         dotProduct = h.dot(normal);
+        
         if (dotProduct < 0)
             dotProduct = 0;
         float phong = pow(dotProduct, material.phong_exponent);
-
+        
         color_r += material.specular.x * light.intensity.x * phong / distanceFromLight_squared;
         color_g += material.specular.y * light.intensity.y * phong / distanceFromLight_squared;
         color_b += material.specular.z * light.intensity.z * phong / distanceFromLight_squared;
-        
     }
 
     // Ambient
     color_r += material.ambient.x * scene.ambient_light.x;
     color_g += material.ambient.y * scene.ambient_light.y;
     color_b += material.ambient.z * scene.ambient_light.z;
-
     // Reflection
+    
     Ray reflection_ray = Reflect(normal, ray.getDirection(), intersection_point);
     auto reflection_info = RayIntersect(reflection_ray, camera, scene);
     if (reflection_info.is_hit)
@@ -295,6 +304,7 @@ Vec3f GetColor(HitInfo hit_info, Camera &camera, Scene &scene, int depth)
         color_g += material.mirror.y * reflection_color.y;
         color_b += material.mirror.z * reflection_color.z; 
     }
+    
 
 
     if(color_r > 255) color_r = 255;
