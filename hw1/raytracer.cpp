@@ -4,18 +4,15 @@
 #include "ppm.h"
 #include "Ray.h"
 #include "HitInfo.h"
+#include "ThreadPool.h"
 
 #define EPSILON 0.001
+#define NUM_THREADS 16
 
 using namespace parser;
-enum class ObjectType
-{
-    SPHERE,
-    MESH,
-    TRIANGLE
-};
+using namespace std;
 
-typedef unsigned char RGB[3];
+typedef unsigned char* Image;
 
 float determinant (Vec3f a, Vec3f b, Vec3f c);
 
@@ -29,8 +26,38 @@ float RayTriangleIntersect(Ray ray, Triangle triangle, Scene &scene, Camera &cam
 float RayMeshIntersect(Ray ray, Mesh mesh, Scene &scene, Camera &camera, Face &face_out);
 
 HitInfo RayIntersect(Ray ray, Camera &camera, Scene &scene);
-Vec3f GetColor(HitInfo hit_info, Camera &camera, Scene &scene, int depth);
+Vec3i GetColor(HitInfo hit_info, Camera &camera, Scene &scene, int depth);
 
+struct RenderData
+{
+    Camera& camera;
+    Scene& scene;
+    Vec3i& color;
+    int x;
+    int y;
+    RenderData(Camera& camera, Scene& scene, Vec3i& color, int x, int y) : camera(camera), scene(scene), color(color), x(x), y(y) {}
+};
+
+void* renderPixel(RenderData* data)
+{
+    auto camera = data->camera;
+    auto scene = data->scene;
+    int x = data->x;
+    int y = data->y;
+
+    Ray ray = Ray(camera.position, GetRayDirection(camera, x, y));
+    HitInfo hit_info = RayIntersect(ray, camera, scene);
+    if(hit_info.is_hit)
+    {                    
+        data->color = GetColor(hit_info, camera, scene, 0);
+    }
+    else
+    {
+        data->color = scene.background_color;
+    }
+    
+    return NULL;
+}
 
 int main(int argc, char* argv[])
 {
@@ -38,23 +65,29 @@ int main(int argc, char* argv[])
 
     scene.loadFromXml(argv[1]);
 
+    
     for (Camera camera : scene.cameras)
     {
         int width = camera.image_width;
         int height = camera.image_height;
 
-        unsigned char* image = new unsigned char [width * height * 3]; // 3 channels per pixel (RGB)
+        Image image = new unsigned char [width * height * 3]; // 3 channels per pixel (RGB)
         
-        int i = 0; 
+        ThreadPool pool(NUM_THREADS);
+        Vec3i colors[width * height] = {Vec3i{0,0,0}};
         for (int y = 0; y < height; ++y)
         {
             for (int x = 0; x < width; ++x)
             {
-                Ray ray = Ray(camera.position, GetRayDirection(camera, x, y));
+                RenderData* data = new RenderData(camera, scene, colors[y * width + x], x, y);
+                Task task = Task([data](){renderPixel(data);});
+                pool.AddTask(task);
+
+                /* Ray ray = Ray(camera.position, GetRayDirection(camera, x, y));
                 HitInfo hit_info = RayIntersect(ray, camera, scene);
                 if(hit_info.is_hit)
                 {                    
-                    Vec3f color = GetColor(hit_info, camera, scene, 0);
+                    Vec3i color = GetColor(hit_info, camera, scene, 0);
                     image[i++] = color.x; // R
                     image[i++] = color.y; // G
                     image[i++] = color.z; // B
@@ -64,13 +97,28 @@ int main(int argc, char* argv[])
                     image[i++] = scene.background_color.x; // R
                     image[i++] = scene.background_color.y; // G
                     image[i++] = scene.background_color.z; // B
-                }
+                } */
+            }
+        }
+        cout << "Waiting for all tasks to finish..." << endl;
+        pool.WaitAll();
+
+        int i = 0;
+        for (int y = 0; y < height; ++y)
+        {
+            for(int x = 0; x < width; ++x)
+            {
+                image[i++] = colors[y * width + x].x; // R
+                image[i++] = colors[y * width + x].y; // G
+                image[i++] = colors[y * width + x].z; // B
             }
         }
 
-        write_ppm(camera.image_name.c_str(), image, width, height);        
+        write_ppm(camera.image_name.c_str(), image, width, height);
+        cout << "Image " << camera.image_name << " is written." << endl;
     }
 }
+
 
 Vec3f GetRayDirection(Camera camera, int x, int y)
 {
@@ -234,10 +282,10 @@ HitInfo RayIntersect(Ray ray, Camera &camera, Scene &scene)
     return info;
 }
 
-Vec3f GetColor(HitInfo hit_info, Camera &camera, Scene &scene, int depth)
+Vec3i GetColor(HitInfo hit_info, Camera &camera, Scene &scene, int depth)
 {
     if(depth > scene.max_recursion_depth)
-        return Vec3f{0,0,0};
+        return Vec3i{0,0,0};
 
     int material_id = hit_info.material_id;
     Vec3f intersection_point = hit_info.hit_point;
@@ -298,19 +346,20 @@ Vec3f GetColor(HitInfo hit_info, Camera &camera, Scene &scene, int depth)
     auto reflection_info = RayIntersect(reflection_ray, camera, scene);
     if (reflection_info.is_hit)
     {
-        Vec3f reflection_color = Vec3f{0,0,0};
-        reflection_color = GetColor(reflection_info, camera, scene, depth + 1);
+        auto reflection_color = GetColor(reflection_info, camera, scene, depth + 1);
         color_r += material.mirror.x * reflection_color.x;
         color_g += material.mirror.y * reflection_color.y;
         color_b += material.mirror.z * reflection_color.z; 
     }
-    
-
 
     if(color_r > 255) color_r = 255;
     if(color_g > 255) color_g = 255;
     if(color_b > 255) color_b = 255;
+
+    int icolor_r = (int) round(color_r);
+    int icolor_g = (int) round(color_g);
+    int icolor_b = (int) round(color_b);
     
-    return Vec3f{color_r, color_g, color_b};
+    return Vec3i{icolor_r, icolor_g, icolor_b};
 }
 
