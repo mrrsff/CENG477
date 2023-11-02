@@ -1,27 +1,21 @@
+#define EPSILON 0.001
+#define NUM_THREADS 64
+
 #include <iostream>
 #include <cmath>
-#include <algorithm>
 #include "parser.h"
 #include "ppm.h"
 #include "Ray.h"
 #include "HitInfo.h"
-//#include "Node.h"
-//#include "Tree3D.h"
-
-#define EPSILON 0.001
+#include <thread>
+#include <mutex>
+#include <vector>
+#include <atomic>
 
 using namespace parser;
 using namespace std;
 
-enum class ObjectType
-{
-    SPHERE,
-    MESH,
-    TRIANGLE
-};
-using namespace std;
-
-typedef unsigned char RGB[3];
+typedef unsigned char* Image;
 
 float determinant (Vec3f a, Vec3f b, Vec3f c);
 
@@ -35,9 +29,44 @@ float RayTriangleIntersect(Ray ray, Triangle triangle, Scene &scene, Camera &cam
 float RayMeshIntersect(Ray ray, Mesh mesh, Scene &scene, Camera &camera, Face &face_out);
 
 HitInfo RayIntersect(Ray ray, Camera &camera, Scene &scene);
-Vec3f GetColor(HitInfo hit_info, Camera &camera, Scene &scene, int depth);
+Vec3i GetColor(HitInfo hit_info, Camera &camera, Scene &scene, int depth);
 
-void computeBounds(Mesh &mesh,Scene &scene, Vec3f &minBounds, Vec3f &maxBounds);
+std::mutex imageMutex;
+int numThreads = NUM_THREADS;
+
+void RenderImage(Camera camera, Scene &scene,Image &image, int startRow, int endRow)
+{
+    int width = camera.image_width;
+    for (int y = startRow; y < endRow; ++y)
+    {
+        for(int x = 0; x < width; ++x)
+        {
+            // Logic
+            Ray ray = Ray(camera.position, GetRayDirection(camera, x, y));
+            HitInfo hit_info = RayIntersect(ray, camera, scene);
+            
+            int pixelIndex = (y * width + x) * 3; // Index in the image buffer
+
+            if(hit_info.is_hit)
+            {                    
+                Vec3i color = GetColor(hit_info, camera, scene, 0);
+                // Lock the image buffer before writing
+                std::unique_lock<std::mutex> lock(imageMutex);
+                image[pixelIndex] = color.x; // R
+                image[pixelIndex + 1] = color.y; // G
+                image[pixelIndex + 2] = color.z; // B
+            }
+            else
+            {
+                // Lock the image buffer before writing
+                std::unique_lock<std::mutex> lock(imageMutex);
+                image[pixelIndex] = scene.background_color.x; // R
+                image[pixelIndex + 1] = scene.background_color.y; // G
+                image[pixelIndex + 2] = scene.background_color.z; // B
+            }
+        }
+    }
+}
 
 int main(int argc, char* argv[])
 {
@@ -45,23 +74,42 @@ int main(int argc, char* argv[])
 
     scene.loadFromXml(argv[1]);
 
+    
     for (Camera camera : scene.cameras)
     {
         int width = camera.image_width;
         int height = camera.image_height;
 
-        unsigned char* image = new unsigned char [width * height * 3]; // 3 channels per pixel (RGB)
-        
-        int i = 0; 
+        Image image = new unsigned char [width * height * 3]; // 3 channels per pixel (RGB)
+
+        int numRowsPerThread = height / NUM_THREADS;
+
+        std::vector<std::thread> threads;
+
+        for (int i = 0; i < numThreads; ++i)
+        {
+            int startRow = i * numRowsPerThread;
+            int endRow = (i == numThreads - 1) ? height : (startRow + numRowsPerThread);
+
+            threads.emplace_back(RenderImage, camera, std::ref(scene), std::ref(image), startRow, endRow);
+        }
+
+        // Wait for all threads to finish
+        for (std::thread &thread : threads)
+        {
+            thread.join();
+        }
+
+        /* int i = 0;
         for (int y = 0; y < height; ++y)
         {
-            for (int x = 0; x < width; ++x)
+            for (int x = 0; x < width; ++x) 
             {
                 Ray ray = Ray(camera.position, GetRayDirection(camera, x, y));
                 HitInfo hit_info = RayIntersect(ray, camera, scene);
                 if(hit_info.is_hit)
                 {                    
-                    Vec3f color = GetColor(hit_info, camera, scene, 0);
+                    Vec3i color = GetColor(hit_info, camera, scene, 0);
                     image[i++] = color.x; // R
                     image[i++] = color.y; // G
                     image[i++] = color.z; // B
@@ -73,29 +121,39 @@ int main(int argc, char* argv[])
                     image[i++] = scene.background_color.z; // B
                 }
             }
-        }
+        } */
 
-        write_ppm(camera.image_name.c_str(), image, width, height);        
+        std::unique_lock<std::mutex> lock(imageMutex);
+        write_ppm(camera.image_name.c_str(), image, width, height);
+        cout << "Image " << camera.image_name << " is written." << endl;
     }
 }
 
-Vec3f GetRayDirection(Camera camera, int x, int y)
+Vec3f GetRayDirection(Camera camera, int i, int j)
 {
     // v = Camera up vector
     // -w = Camera gaze vector
-    // u = cross(v,-w) 
+    // u = cross(v,w) 
 
-    Vec3f u = camera.up.cross(camera.gaze * -1);
-    Vec3f m = camera.position + camera.gaze * camera.near_distance;
-    Vec3f q = m + (u * -1) + (camera.up * 1);
+    Vec3f e = camera.position;
+    Vec3f v = camera.up;
+    Vec3f w = camera.gaze * -1;
+    Vec3f u = v.cross(w);
+
     float l = camera.near_plane.x;
     float r = camera.near_plane.y;
     float b = camera.near_plane.z;
     float t = camera.near_plane.w;
-    float su = (x + 0.5) * (r-l) / camera.image_width;
-    float sv = (y + 0.5) * (t-b) / camera.image_height;
-    Vec3f s = q + (u * su) - (camera.up * sv);
-    Vec3f d = s - camera.position;
+
+    Vec3f m = e + w * camera.near_distance * -1;
+
+    Vec3f q = m + u * l + v * t;
+    float su = (i+0.5) * (r-l) / camera.image_width;
+    float sv = (j+0.5) * (t-b) / camera.image_height;
+
+    Vec3f s = q + u * su - v * sv;
+
+    Vec3f d = s-e;
     return d;
 }
 
@@ -154,8 +212,7 @@ float RayMeshIntersect(Ray ray, Mesh mesh, Scene &scene, Camera &camera, Face &f
     bool check = false;
     for(Face face : mesh.faces){
         float temp = RayTriangleIntersect(ray, Triangle{mesh.material_id,face}, scene, camera);
-        if (temp < 0) continue;
-        if (temp < t){
+        if (temp > 0 && temp < t){
             t = temp;
             face_out = face;
             check = true;
@@ -241,10 +298,10 @@ HitInfo RayIntersect(Ray ray, Camera &camera, Scene &scene)
     return info;
 }
 
-Vec3f GetColor(HitInfo hit_info, Camera &camera, Scene &scene, int depth)
+Vec3i GetColor(HitInfo hit_info, Camera &camera, Scene &scene, int depth)
 {
     if(depth > scene.max_recursion_depth)
-        return Vec3f{0,0,0};
+        return Vec3i{0,0,0};
 
     int material_id = hit_info.material_id;
     Vec3f intersection_point = hit_info.hit_point;
@@ -265,9 +322,9 @@ Vec3f GetColor(HitInfo hit_info, Camera &camera, Scene &scene, int depth)
         Vec3f l = light_direction.normalize();
         Vec3f v = ray.getDirection().normalize() * -1;
         
-        // TODO: Check if the intersection point is in shadow
-        auto inShadow = RayIntersect(Ray(intersection_point + (light_direction * scene.shadow_ray_epsilon), light_direction), camera, scene);
-        if(inShadow.is_hit == true ) continue;
+        // Shadow
+        auto inShadow = RayIntersect(Ray(intersection_point + (normal * scene.shadow_ray_epsilon), light_direction), camera, scene);
+        if(inShadow.is_hit == true && inShadow.t > 0 && inShadow.t < 1) continue;
         
         // Diffuse 
         float distanceFromLight_squared = light_direction.length() * light_direction.length();
@@ -282,10 +339,8 @@ Vec3f GetColor(HitInfo hit_info, Camera &camera, Scene &scene, int depth)
 
         // Specular
         Vec3f h = (l + v) / ((l + v).length());
-        Vec3f deneme = ray.getDirection();
         
         dotProduct = h.dot(normal);
-        
         if (dotProduct < 0)
             dotProduct = 0;
         float phong = pow(dotProduct, material.phong_exponent);
@@ -301,42 +356,26 @@ Vec3f GetColor(HitInfo hit_info, Camera &camera, Scene &scene, int depth)
     color_b += material.ambient.z * scene.ambient_light.z;
     // Reflection
     
-    Ray reflection_ray = Reflect(normal, ray.getDirection(), intersection_point);
-    auto reflection_info = RayIntersect(reflection_ray, camera, scene);
-    if (reflection_info.is_hit)
+    if(material.is_mirror)
     {
-        Vec3f reflection_color = Vec3f{0,0,0};
-        reflection_color = GetColor(reflection_info, camera, scene, depth + 1);
-        color_r += material.mirror.x * reflection_color.x;
-        color_g += material.mirror.y * reflection_color.y;
-        color_b += material.mirror.z * reflection_color.z; 
+        Ray reflection_ray = Reflect(normal, ray.getDirection(), intersection_point);
+        auto reflection_info = RayIntersect(reflection_ray, camera, scene);
+        if (reflection_info.is_hit)
+        {
+            auto reflection_color = GetColor(reflection_info, camera, scene, depth + 1);
+            color_r += material.mirror.x * reflection_color.x;
+            color_g += material.mirror.y * reflection_color.y;
+            color_b += material.mirror.z * reflection_color.z; 
+        }   
     }
-    
-
 
     if(color_r > 255) color_r = 255;
     if(color_g > 255) color_g = 255;
     if(color_b > 255) color_b = 255;
-    
-    return Vec3f{color_r, color_g, color_b};
-}
 
-void computeBounds(Mesh &mesh,Scene &scene, Vec3f &minBounds, Vec3f &maxBounds){
-    minBounds.x = INFINITY; 
-    minBounds.y = INFINITY;
-    minBounds.z = INFINITY;
-    maxBounds.x = -INFINITY;
-    maxBounds.y = -INFINITY;
-    maxBounds.z = -INFINITY;
-    for (Face face : mesh.faces){
-        Vec3f v0 = scene.vertex_data[face.v0_id - 1];
-        Vec3f v1 = scene.vertex_data[face.v1_id - 1];
-        Vec3f v2 = scene.vertex_data[face.v2_id - 1];
-        minBounds.x = std::min(minBounds.x, std::min(v0.x, std::min(v1.x, v2.x)));
-        minBounds.y = std::min(minBounds.y, std::min(v0.y, std::min(v1.y, v2.y)));
-        minBounds.z = std::min(minBounds.z, std::min(v0.z, std::min(v1.z, v2.z)));
-        maxBounds.x = std::max(maxBounds.x, std::max(v0.x, std::max(v1.x, v2.x)));
-        maxBounds.y = std::max(maxBounds.y, std::max(v0.y, std::max(v1.y, v2.y)));
-        maxBounds.z = std::max(maxBounds.z, std::max(v0.z, std::max(v1.z, v2.z)));
-    }
+    int icolor_r = (int) round(color_r);
+    int icolor_g = (int) round(color_g);
+    int icolor_b = (int) round(color_b);
+    
+    return Vec3i{icolor_r, icolor_g, icolor_b};
 }
