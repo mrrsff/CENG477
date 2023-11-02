@@ -1,5 +1,7 @@
 #include <iostream>
 #include <cmath>
+#include <vector>
+#include <algorithm>
 #include "parser.h"
 #include "ppm.h"
 #include "Ray.h"
@@ -8,6 +10,8 @@
 #define EPSILON 0.001
 
 using namespace parser;
+using namespace std;
+
 enum class ObjectType
 {
     SPHERE,
@@ -146,10 +150,10 @@ float RayMeshIntersect(Ray ray, Mesh mesh, Scene &scene, Camera &camera, Face &f
     float t = INFINITY;
     bool check = false;
     for(Face face : mesh.faces){
-        float temp = RayTriangleIntersect(ray, Triangle{mesh.material_id,face}, scene, camera);
-        if (temp < 0) continue;
-        if (temp < t){
-            t = temp;
+        float centroid = RayTriangleIntersect(ray, Triangle{mesh.material_id,face}, scene, camera);
+        if (centroid < 0) continue;
+        if (centroid < t){
+            t = centroid;
             face_out = face;
             check = true;
         }
@@ -304,8 +308,6 @@ Vec3f GetColor(HitInfo hit_info, Camera &camera, Scene &scene, int depth)
         color_g += material.mirror.y * reflection_color.y;
         color_b += material.mirror.z * reflection_color.z; 
     }
-    
-
 
     if(color_r > 255) color_r = 255;
     if(color_g > 255) color_g = 255;
