@@ -1,7 +1,7 @@
 src = *.cpp
 
 all:
-	g++ $(src) -std=c++11 -O3 -o raytracer -lpthread -Wl,--stack,16777216
+	g++ $(src) -std=c++11 -O3 -o raytracer -pthread 
 
 simple:
 	make all

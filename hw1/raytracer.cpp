@@ -1,13 +1,16 @@
+#define EPSILON 0.001
+#define NUM_THREADS 64
+
 #include <iostream>
 #include <cmath>
 #include "parser.h"
 #include "ppm.h"
 #include "Ray.h"
 #include "HitInfo.h"
-#include "ThreadPool.h"
-
-#define EPSILON 0.001
-#define NUM_THREADS 16
+#include <thread>
+#include <mutex>
+#include <vector>
+#include <atomic>
 
 using namespace parser;
 using namespace std;
@@ -28,35 +31,41 @@ float RayMeshIntersect(Ray ray, Mesh mesh, Scene &scene, Camera &camera, Face &f
 HitInfo RayIntersect(Ray ray, Camera &camera, Scene &scene);
 Vec3i GetColor(HitInfo hit_info, Camera &camera, Scene &scene, int depth);
 
-struct RenderData
-{
-    Camera& camera;
-    Scene& scene;
-    Vec3i& color;
-    int x;
-    int y;
-    RenderData(Camera& camera, Scene& scene, Vec3i& color, int x, int y) : camera(camera), scene(scene), color(color), x(x), y(y) {}
-};
+std::mutex imageMutex;
+int numThreads = NUM_THREADS;
 
-void* renderPixel(RenderData* data)
+void RenderImage(Camera camera, Scene &scene,Image &image, int startRow, int endRow)
 {
-    auto camera = data->camera;
-    auto scene = data->scene;
-    int x = data->x;
-    int y = data->y;
-
-    Ray ray = Ray(camera.position, GetRayDirection(camera, x, y));
-    HitInfo hit_info = RayIntersect(ray, camera, scene);
-    if(hit_info.is_hit)
-    {                    
-        data->color = GetColor(hit_info, camera, scene, 0);
-    }
-    else
+    int width = camera.image_width;
+    for (int y = startRow; y < endRow; ++y)
     {
-        data->color = scene.background_color;
+        for(int x = 0; x < width; ++x)
+        {
+            // Logic
+            Ray ray = Ray(camera.position, GetRayDirection(camera, x, y));
+            HitInfo hit_info = RayIntersect(ray, camera, scene);
+            
+            int pixelIndex = (y * width + x) * 3; // Index in the image buffer
+
+            if(hit_info.is_hit)
+            {                    
+                Vec3i color = GetColor(hit_info, camera, scene, 0);
+                // Lock the image buffer before writing
+                std::unique_lock<std::mutex> lock(imageMutex);
+                image[pixelIndex] = color.x; // R
+                image[pixelIndex + 1] = color.y; // G
+                image[pixelIndex + 2] = color.z; // B
+            }
+            else
+            {
+                // Lock the image buffer before writing
+                std::unique_lock<std::mutex> lock(imageMutex);
+                image[pixelIndex] = scene.background_color.x; // R
+                image[pixelIndex + 1] = scene.background_color.y; // G
+                image[pixelIndex + 2] = scene.background_color.z; // B
+            }
+        }
     }
-    
-    return NULL;
 }
 
 int main(int argc, char* argv[])
@@ -72,18 +81,31 @@ int main(int argc, char* argv[])
         int height = camera.image_height;
 
         Image image = new unsigned char [width * height * 3]; // 3 channels per pixel (RGB)
-        
-        ThreadPool pool(NUM_THREADS);
-        Vec3i colors[width * height] = {Vec3i{0,0,0}};
+
+        int numRowsPerThread = height / NUM_THREADS;
+
+        std::vector<std::thread> threads;
+
+        for (int i = 0; i < numThreads; ++i)
+        {
+            int startRow = i * numRowsPerThread;
+            int endRow = (i == numThreads - 1) ? height : (startRow + numRowsPerThread);
+
+            threads.emplace_back(RenderImage, camera, std::ref(scene), std::ref(image), startRow, endRow);
+        }
+
+        // Wait for all threads to finish
+        for (std::thread &thread : threads)
+        {
+            thread.join();
+        }
+
+        /* int i = 0;
         for (int y = 0; y < height; ++y)
         {
-            for (int x = 0; x < width; ++x)
+            for (int x = 0; x < width; ++x) 
             {
-                RenderData* data = new RenderData(camera, scene, colors[y * width + x], x, y);
-                Task task = Task([data](){renderPixel(data);});
-                pool.AddTask(task);
-
-                /* Ray ray = Ray(camera.position, GetRayDirection(camera, x, y));
+                Ray ray = Ray(camera.position, GetRayDirection(camera, x, y));
                 HitInfo hit_info = RayIntersect(ray, camera, scene);
                 if(hit_info.is_hit)
                 {                    
@@ -97,23 +119,11 @@ int main(int argc, char* argv[])
                     image[i++] = scene.background_color.x; // R
                     image[i++] = scene.background_color.y; // G
                     image[i++] = scene.background_color.z; // B
-                } */
+                }
             }
-        }
-        cout << "Waiting for all tasks to finish..." << endl;
-        pool.WaitAll();
+        } */
 
-        int i = 0;
-        for (int y = 0; y < height; ++y)
-        {
-            for(int x = 0; x < width; ++x)
-            {
-                image[i++] = colors[y * width + x].x; // R
-                image[i++] = colors[y * width + x].y; // G
-                image[i++] = colors[y * width + x].z; // B
-            }
-        }
-
+        std::unique_lock<std::mutex> lock(imageMutex);
         write_ppm(camera.image_name.c_str(), image, width, height);
         cout << "Image " << camera.image_name << " is written." << endl;
     }
