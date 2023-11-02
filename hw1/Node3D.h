@@ -13,7 +13,7 @@ class Node3D {
         Vec3f max;
         int depth;
         vector<Face> faces;
-        vector<Vec3f> vertices;
+        vector<int> vertex_ids;
         Node3D* left;
         Node3D* right;
 
