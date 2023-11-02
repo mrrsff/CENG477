@@ -41,37 +41,28 @@ void ThreadPool::WorkerThread()
 {
     while (true)
     {
-        Task task;
+        std::unique_lock<std::mutex> lock(taskMutex);
 
-        {
-            std::unique_lock<std::mutex> lock(taskMutex);
+        taskCondition.wait(lock, [this] { return stop || !tasks.empty(); });
 
-            taskCondition.wait(lock, [this] { return stop || !tasks.empty(); });
-
-            if (stop && tasks.empty()) {
-                return;
-            }
-
-            task = tasks.front();
-            tasks.pop();
+        if (stop && tasks.empty()) {
+            return;
         }
 
+        auto task = tasks.front();
+        tasks.pop();
         // Increment the activeThreads count safely
-        {
-            std::unique_lock<std::mutex> lock(activeThreadsMutex);
-            activeThreads++;
-        }
+        std::unique_lock<std::mutex> lock(activeThreadsMutex);
+        activeThreads++;
 
         // Execute the task
-        task.func(task.arg);
+        task.func();
 
         // Decrement the activeThreads count safely
-        {
-            std::unique_lock<std::mutex> lock(activeThreadsMutex);
-            activeThreads--;
-            if (activeThreads == 0) {
-                noActiveThreadsCondition.notify_one();
-            }
+        std::unique_lock<std::mutex> lock(activeThreadsMutex);
+        activeThreads--;
+        if (activeThreads == 0) {
+            noActiveThreadsCondition.notify_one();
         }
     }
 }

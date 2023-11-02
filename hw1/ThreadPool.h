@@ -1,11 +1,12 @@
 #pragma once
 
-#include <vector>
-#include <queue>
-#include <thread>
-#include <functional>
 #include <mutex>
 #include <condition_variable>
+#include <thread>
+#include <vector>
+#include <queue>
+#include <functional>
+
 
 struct Task
 {
@@ -20,7 +21,7 @@ public:
     ~ThreadPool();
 
     // Function to add a task to the thread pool
-    void AddTask(Task task);
+    void AddTask(Task& task);
     void WaitAll();
 
 private:
