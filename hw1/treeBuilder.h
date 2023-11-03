@@ -12,9 +12,11 @@ class treeBuilder{
     public:                                    
         treeBuilder();
         ~treeBuilder();
-        //TODO: buildTree function
-        Node3D* buildTree(vector<Face> &faces, vector<int> &vertex_ids,Scene &scene, int depth, Vec3f min, Vec3f max);
-        void boundingBox (Mesh mesh,Scene &scene, Vec3f &min, Vec3f &max);
+        // Builds the tree recursively
+        Node3D* buildTree(vector<Face> &faces, vector<int> &vertex_ids,Scene &scene, int depth, Vec3f minVertex, Vec3f maxVertex);
+        // Finds the bounding box of the given faces
+        void findBoundingBox (vector<Face> &faces,Scene &scene, Vec3f &minVertex, Vec3f &maxVertex);
+        // Sorts the vertices according to its position on the axis (sorted vertices are stored in vertex_ids)
         void sortVertices (vector<int> &vertex_ids,Scene &scene, int axis);
         //void uniqueVertices (vector<Face> &faces, vector<int> &vertex_ids);
 };

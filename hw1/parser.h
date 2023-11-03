@@ -119,6 +119,7 @@ namespace parser
     };
     struct Mesh
     {
+        int mesh_id;
         int material_id;
         std::vector<Face> faces;
     };

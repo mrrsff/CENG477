@@ -49,6 +49,7 @@
         "thread": "cpp",
         "cinttypes": "cpp",
         "mutex": "cpp",
-        "condition_variable": "cpp"
+        "condition_variable": "cpp",
+        "semaphore": "cpp"
     }
 }

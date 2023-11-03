@@ -1,3 +1,5 @@
+#pragma once
+
 #include "parser.h"
 #include "Ray.h"
 

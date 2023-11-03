@@ -1,6 +1,7 @@
 #include "parser.h"
 #include "Ray.h"
 #include "HitInfo.h"
+
 using namespace parser;
 
 HitInfo::HitInfo()
