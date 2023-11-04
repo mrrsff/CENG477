@@ -26,43 +26,21 @@ void treeBuilder::findBoundingBox (vector<Face> &faces,Scene &scene, Vec3f &minV
         vertices.push_back(scene.vertex_data[face.v2_id - 1]);
     }
     for(Vec3f vertex : vertices){
-        if(vertex[0] < minVertex[0]){
-            minVertex.x = vertex[0];
-        }
-        if(vertex[1] < minVertex[1]){
-            minVertex.y = vertex[1];
-        }
-        if(vertex[2] < minVertex[2]){
-            minVertex.z = vertex[2];
-        }
-        if(vertex[0] > maxVertex[0]){
-            maxVertex.x = vertex[0];
-        }
-        if(vertex[1] > maxVertex[1]){
-            maxVertex.y = vertex[1];
-        }
-        if(vertex[2] > maxVertex[2]){
-            maxVertex.z = vertex[2];
-        }
+        if(vertex[0] < minVertex[0]) minVertex.x = vertex[0];
+        if(vertex[1] < minVertex[1]) minVertex.y = vertex[1];
+        if(vertex[2] < minVertex[2]) minVertex.z = vertex[2];
+
+        if(vertex[0] > maxVertex[0]) maxVertex.x = vertex[0];
+        if(vertex[1] > maxVertex[1]) maxVertex.y = vertex[1];
+        if(vertex[2] > maxVertex[2]) maxVertex.z = vertex[2];
     }
-    if(minVertex[0] == INFINITY){
-        minVertex.x = 0;
-    }
-    if(minVertex[1] == INFINITY){
-        minVertex.y = 0;
-    }
-    if(minVertex[2] == INFINITY){
-        minVertex.z = 0;
-    }
-    if(maxVertex[0] == -INFINITY){
-        maxVertex.x = 0;
-    }
-    if(maxVertex[1] == -INFINITY){
-        maxVertex.y = 0;
-    }
-    if(maxVertex[2] == -INFINITY){
-        maxVertex.z = 0;
-    }
+    if(minVertex[0] == INFINITY) minVertex.x = 0;
+    if(minVertex[1] == INFINITY) minVertex.y = 0;
+    if(minVertex[2] == INFINITY) minVertex.z = 0;
+
+    if(maxVertex[0] == -INFINITY) maxVertex.x = 0;
+    if(maxVertex[1] == -INFINITY) maxVertex.y = 0;
+    if(maxVertex[2] == -INFINITY) maxVertex.z = 0;
 }
 
 Node3D* treeBuilder::buildTree(vector<Face> &faces, vector<int> &vertex_ids,Scene &scene, int depth, Vec3f minVertex, Vec3f maxVertex){
@@ -109,12 +87,30 @@ Node3D* treeBuilder::buildTree(vector<Face> &faces, vector<int> &vertex_ids,Scen
             rightFaces.push_back(face);
         }
     }
-    Vec3f leftMin;
+    Vec3f leftMin = minVertex;
     Vec3f leftMax;
+    if(axis == 0){
+        leftMax = Vec3f{middle[0], maxVertex[1], maxVertex[2]};
+    }
+    else if(axis == 1){
+        leftMax = Vec3f{maxVertex[0], middle[1], maxVertex[2]};
+    }
+    else{
+        leftMax = Vec3f{maxVertex[0], maxVertex[1], middle[2]};
+    }
     Vec3f rightMin;
-    Vec3f rightMax;
-    findBoundingBox(leftFaces, scene, leftMin, leftMax);
-    findBoundingBox(rightFaces, scene, rightMin, rightMax);
+    if(axis == 0){
+        rightMin = Vec3f{middle[0], minVertex[1], minVertex[2]};
+    }
+    else if(axis == 1){
+        rightMin = Vec3f{minVertex[0], middle[1], minVertex[2]};
+    }
+    else{
+        rightMin = Vec3f{minVertex[0], minVertex[1], middle[2]};
+    }
+    Vec3f rightMax = maxVertex;
+    /* findBoundingBox(leftFaces, scene, leftMin, leftMax);
+    findBoundingBox(rightFaces, scene, rightMin, rightMax); */
     node->left = buildTree(leftFaces, leftVertices, scene, depth + 1, leftMin, leftMax);
     node->right = buildTree(rightFaces, rightVertices, scene, depth + 1, rightMin, rightMax);
     

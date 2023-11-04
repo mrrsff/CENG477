@@ -42,13 +42,14 @@ Vec3i GetColor(HitInfo hit_info, Camera &camera, Scene &scene, int depth, Node3D
 
 void findUniqueVertices(vector<Face> &faces, vector<int> &vertices);
 
-void PrintTree(Node3D* tree, Scene &scene)
+void PrintTree(Node3D* tree, Scene &scene, int mt_id = -1)
 {
     if(tree == nullptr)
         return;
     cout << "Depth: " << tree->depth << endl;
     cout << "Bounding Min: " << tree->boundingMin.x << " " << tree->boundingMin.y << " " << tree->boundingMin.z << endl;
     cout << "Bounding Max: " << tree->boundingMax.x << " " << tree->boundingMax.y << " " << tree->boundingMax.z << endl;
+    cout << "Material ID: " << mt_id << endl;
     cout << "Faces: " << endl;
     for(Face face : tree->faces){
         cout << face.v0_id << " " << face.v1_id << " " << face.v2_id << endl;
@@ -58,8 +59,8 @@ void PrintTree(Node3D* tree, Scene &scene)
         cout << vertex << " position: " << scene.vertex_data[vertex - 1].x << " " << scene.vertex_data[vertex - 1].y << " " << scene.vertex_data[vertex - 1].z << endl;
     }
     cout << endl;
-    PrintTree(tree->left,scene);
-    PrintTree(tree->right,scene);
+    PrintTree(tree->left,scene,mt_id);
+    PrintTree(tree->right,scene,mt_id);
 }
 
 int main(int argc, char* argv[])
@@ -80,7 +81,7 @@ int main(int argc, char* argv[])
         Vec3f boundingMax;
         treebuilder.findBoundingBox(mesh->faces, scene, boundingMin, boundingMax);
         Node3D* root = treebuilder.buildTree(mesh->faces, uniqueVertices, scene, 0, boundingMin, boundingMax);
-        // PrintTree(root, scene);
+        //PrintTree(root, scene, mesh->material_id);
         meshTrees[mesh->mesh_id] = root;
     }
 
@@ -181,6 +182,9 @@ float RayFaceIntersect(Ray ray, Face face, Scene &scene){
     Vec3f b = scene.vertex_data[face.v1_id - 1];
     Vec3f c = scene.vertex_data[face.v2_id - 1];
 
+    Vec3f normal = (b - a).cross(c - a).normalize(); // Backface culling
+    if(normal.dot(d) > 0) return -1;
+
     float A = determinant(a-b,a-c,d);
     float beta = determinant(a-o,a-c,d)/A;
     float gamma = determinant(a-b,a-o,d)/A;
@@ -211,7 +215,11 @@ float RayTreeIntersect(Ray ray, Node3D *node, Scene &scene, Face& face_out)
     {
         float t1 = RayTreeIntersect(ray, node->left, scene, face_out);
         float t2 = RayTreeIntersect(ray, node->right, scene, face_out);
-        return t1 < t2 ? t1 : t2;
+        
+        if (t1 > 0 && t2 > 0) return t1 < t2 ? t1 : t2;
+        else if (t1 > 0) return t1;
+        else if (t2 > 0) return t2;
+        else return -1;
     }
     else
     {
@@ -286,10 +294,10 @@ Vec3f GetFaceNormal(Ray ray, Face face, Scene &scene)
 
 void PrintHitInfo(HitInfo hit_info)
 {
-    cout << "Hit Info: " << endl;
+    /* cout << "Hit Info: " << endl; */
     cout << "Material ID: " << hit_info.material_id << endl;
-    cout << "Normal: " << hit_info.normal.x << " " << hit_info.normal.y << " " << hit_info.normal.z << endl;
-    cout << "Hit Point: " << hit_info.hit_point.x << " " << hit_info.hit_point.y << " " << hit_info.hit_point.z << endl;
+    /* cout << "Normal: " << hit_info.normal.x << " " << hit_info.normal.y << " " << hit_info.normal.z << endl;
+    cout << "Hit Point: " << hit_info.hit_point.x << " " << hit_info.hit_point.y << " " << hit_info.hit_point.z << endl; */
 }
 
 HitInfo RayIntersect(Ray ray, Camera &camera, Scene &scene, Node3D **meshTrees)
@@ -318,7 +326,7 @@ HitInfo RayIntersect(Ray ray, Camera &camera, Scene &scene, Node3D **meshTrees)
         Face face;
         float t = RayMeshIntersect(ray, mesh, meshTrees[mesh.mesh_id] , scene, face);
         if (t > 0 && t < tmin)
-        {q
+        {
             tmin = t;
             info.is_hit = true;
             info.t = t;
@@ -327,7 +335,10 @@ HitInfo RayIntersect(Ray ray, Camera &camera, Scene &scene, Node3D **meshTrees)
             info.normal = GetFaceNormal(ray, face, scene);
             //hitting ray missing
             info.hitting_ray = ray;
-
+            /* if(info.is_hit)
+            {
+                PrintHitInfo(info);
+            } */
         }
 
     }
