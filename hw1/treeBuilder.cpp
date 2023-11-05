@@ -56,7 +56,7 @@ Node3D* treeBuilder::buildTree(vector<Face> &faces, vector<int> &vertex_ids,Scen
     node->boundingMax = maxVertex;
     node->depth = depth;
 
-    if(vertex_ids.size() < 5){
+    if(vertex_ids.size() < 6){
         node->left = NULL;
         node->right = NULL;
         return node;
