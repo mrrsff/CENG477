@@ -1,5 +1,4 @@
 #define EPSILON 0.001
-#define NUM_THREADS 64
 
 #include <iostream>
 #include <cmath>
@@ -14,7 +13,6 @@
 #include <thread>
 #include <mutex>
 #include <vector>
-#include <atomic>
 
 
 using namespace parser;
@@ -23,6 +21,7 @@ using namespace std;
 typedef unsigned char* Image;
 
 float determinant (Vec3f a, Vec3f b, Vec3f c);
+void CalculateFaceNormals(Scene &scene);
 
 Vec3f GetRayDirection(Camera camera, int x, int y);
 Vec3f GetFaceNormal(Ray ray, Face face, Scene &scene);
@@ -33,7 +32,7 @@ float RaySphereIntersect(Ray ray, Sphere sphere, Scene &scene);
 float RayFaceIntersect(Ray ray, Face face, Scene &scene, bool backface_culling);
 float RayMeshIntersect(Ray ray, Mesh mesh, Node3D *tree, Scene &scene, Face &face_out, bool backface_culling);
 float RayTreeIntersect(Ray ray, Node3D *node, Scene &scene, Face& face_out, bool backface_culling);
-bool RayBoundingBoxIntersect(Ray ray, Vec3f minVertex, Vec3f maxVertex);
+float RayBoundingBoxIntersect(Ray ray, Vec3f minVertex, Vec3f maxVertex);
 
 HitInfo RayIntersect(Ray ray, Camera &camera, Scene &scene, vector<Node3D*> &meshTrees, bool backface_culling);
 Vec3i GetColor(HitInfo hit_info, Camera &camera, Scene &scene, int depth, vector<Node3D*> &meshTrees);
@@ -41,7 +40,6 @@ Vec3i GetColor(HitInfo hit_info, Camera &camera, Scene &scene, int depth, vector
 void findUniqueVertices(vector<Face> &faces, vector<int> &vertices);
 
 std::mutex imageMutex;
-int numThreads = NUM_THREADS;
 
 void RenderImage(Camera camera, Scene &scene,Image &image, int startRow, int endRow, vector<Node3D*> &meshTrees)
 {
@@ -79,9 +77,13 @@ void RenderImage(Camera camera, Scene &scene,Image &image, int startRow, int end
 
 int main(int argc, char* argv[])
 {
+    int numThreads = thread::hardware_concurrency();
     Scene scene;
 
     scene.loadFromXml(argv[1]);
+
+    // Calculate Face Normals
+    CalculateFaceNormals(scene);
 
     vector<Node3D*> meshTrees(scene.meshes.size());
     treeBuilder treebuilder;
@@ -98,7 +100,6 @@ int main(int argc, char* argv[])
         //PrintTree(root, scene, mesh->material_id);
         meshTrees[mesh->mesh_id] = root;
     }
-    
     for (Camera camera : scene.cameras)
     {
         int width = camera.image_width;
@@ -106,7 +107,7 @@ int main(int argc, char* argv[])
 
         Image image = new unsigned char [width * height * 3]; // 3 channels per pixel (RGB)
 
-        int numRowsPerThread = height / NUM_THREADS;
+        int numRowsPerThread = height / numThreads;
 
         std::vector<std::thread> threads;
 
@@ -115,7 +116,7 @@ int main(int argc, char* argv[])
             int startRow = i * numRowsPerThread;
             int endRow = (i == numThreads - 1) ? height : (startRow + numRowsPerThread);
 
-            threads.emplace_back(RenderImage, camera, std::ref(scene), std::ref(image), startRow, endRow, std::ref(meshTrees));
+            threads.emplace_back(RenderImage, ref(camera), ref(scene), ref(image), startRow, endRow, ref(meshTrees));
         }
 
         // Wait for all threads to finish
@@ -125,7 +126,6 @@ int main(int argc, char* argv[])
         }
         std::unique_lock<std::mutex> lock(imageMutex);
         write_ppm(camera.image_name.c_str(), image, width, height);
-        cout << "Image " << camera.image_name << " is written." << endl;
     }
        
 }
@@ -195,17 +195,14 @@ float RayFaceIntersect(Ray ray, Face face, Scene &scene, bool backface_culling){
 
     if (backface_culling)
     {
-        Vec3f normal = (b - a).cross(c - a).normalize(); // Backface culling
-        if(normal.dot(d) > 0) return -1;
+        if(face.normal.dot(d) > 0)
+            return -1;
     }
 
     float A = determinant(a-b,a-c,d);
     float beta = determinant(a-o,a-c,d)/A;
     float gamma = determinant(a-b,a-o,d)/A;
     float t = determinant(a-b,a-c,a-o)/A;
-
-    //float tmax = camera.near_distance;
-    //TODO: Tmin and Tmax (?)
 
     if(beta >= 0 && gamma >= 0 && beta + gamma <= 1){
         return t;
@@ -223,7 +220,8 @@ float RayTreeIntersect(Ray ray, Node3D *node, Scene &scene, Face& face_out, bool
         return -1;
 
     // First check the bounding box, then if node has children, check them else check the faces
-    if(!RayBoundingBoxIntersect(ray, node->boundingMin, node->boundingMax))
+
+    if(RayBoundingBoxIntersect(ray, node->boundingMin, node->boundingMax) == -1)
         return -1;
 
     // If node has children, check them
@@ -233,12 +231,15 @@ float RayTreeIntersect(Ray ray, Node3D *node, Scene &scene, Face& face_out, bool
         float t2 = RayTreeIntersect(ray, node->right, scene, face_out, backface_culling);
         
         if (t1 > 0 && t2 > 0) 
-            return t1 < t2 ? t1 : t2; // If both children are hit, return the closest one
+            if(t1 < t2)
+                return t1;
+            else
+                return t2;
         // If one of the children is hit, return it
         else if (t1 > 0) 
             return t1; 
         else if (t2 > 0) 
-            return t2; 
+            return t2;
         else 
             return -1; // If no child is hit, return -1
     }
@@ -257,42 +258,35 @@ float RayTreeIntersect(Ray ray, Node3D *node, Scene &scene, Face& face_out, bool
     }
     
 }
-bool RayBoundingBoxIntersect(Ray ray, Vec3f minVertex, Vec3f maxVertex)
+
+float RayBoundingBoxIntersect(Ray ray, Vec3f minVertex, Vec3f maxVertex)
 {
-    Vec3f origin = ray.getOrigin();
-    Vec3f direction = ray.getDirection();
+    Vec3f o = ray.getOrigin();
+    Vec3f d = ray.getDirection();
+    Vec3f invD = Vec3f{1/d.x, 1/d.y, 1/d.z};
 
-    float tmin = (minVertex.x - origin.x) / direction.x;
-    float tmax = (maxVertex.x - origin.x) / direction.x;
+    double tMinX = (minVertex.x - o.x) * invD.x;
+    double tMaxX = (maxVertex.x - o.x) * invD.x;
+    if (tMinX > tMaxX) swap(tMinX, tMaxX);
 
-    if (tmin > tmax)
-        swap(tmin, tmax);
-    
-    float tymin = (minVertex.y - origin.y) / direction.y;
-    float tymax = (maxVertex.y - origin.y) / direction.y;
+    double iDy = 1 / d.y;
+    double tMinY = (minVertex.y - o.y) * iDy;
+    double tMaxY = (maxVertex.y - o.y) * iDy;
+    if (tMinY > tMaxY) swap(tMinY, tMaxY);
 
-    if (tymin > tymax)
-        swap(tymin, tymax);
+    double iDz = 1 / d.z;
+    double tMinZ = (minVertex.z - o.z) * iDz;
+    double tMaxZ = (maxVertex.z - o.z) * iDz;
+    if (tMinZ > tMaxZ) swap(tMinZ, tMaxZ);
 
-    if ((tmin > tymax) || (tymin > tmax))
-        return false;
-    
-    if (tymin > tmin)
-        tmin = tymin;
-    
-    if (tymax < tmax)
-        tmax = tymax;
-    
-    float tzmin = (minVertex.z - origin.z) / direction.z;
-    float tzmax = (maxVertex.z - origin.z) / direction.z;
+    double tEnter = max(tMinX, max(tMinY, tMinZ));
+    double tExit = min(tMaxX, min(tMaxY, tMaxZ));
 
-    if (tzmin > tzmax)
-        swap(tzmin, tzmax);
-
-    if ((tmin > tzmax) || (tzmin > tmax))
-        return false;
-
-    return true; // This line should be here, outside the last if block.
+    if (tEnter <= tExit && tExit > 0)
+    {
+        return tEnter;
+    }
+    else return -1;
 }
 
 float determinant (Vec3f a, Vec3f b, Vec3f c){
@@ -303,14 +297,6 @@ Vec3f GetSphereNormal(Ray ray, Vec3f intersection_point, Sphere sphere, Scene &s
 {
     Vec3f center = scene.vertex_data[sphere.center_vertex_id - 1];
     Vec3f normal = intersection_point - center;
-    return normal.normalize();
-}
-Vec3f GetFaceNormal(Ray ray, Face face, Scene &scene)
-{
-    Vec3f v0 = scene.vertex_data[face.v0_id - 1];
-    Vec3f v1 = scene.vertex_data[face.v1_id - 1];
-    Vec3f v2 = scene.vertex_data[face.v2_id - 1];
-    Vec3f normal = (v1 - v0).cross(v2 - v0);
     return normal.normalize();
 }
 
@@ -354,7 +340,7 @@ HitInfo RayIntersect(Ray ray, Camera &camera, Scene &scene, vector<Node3D*> &mes
             info.t = t;
             info.material_id = mesh.material_id;
             info.hit_point = ray.getOrigin() + ray.getDirection() * t;
-            info.normal = GetFaceNormal(ray, face, scene);
+            info.normal = face.normal;
             //hitting ray missing
             info.hitting_ray = ray;
             /* if(info.is_hit)
@@ -374,7 +360,7 @@ HitInfo RayIntersect(Ray ray, Camera &camera, Scene &scene, vector<Node3D*> &mes
             info.t = t;
             info.material_id = triangle.material_id;
             info.hit_point = ray.getOrigin() + ray.getDirection() * t;
-            info.normal = GetFaceNormal(ray, triangle.indices, scene);
+            info.normal = triangle.indices.normal;
             //hitting ray missing
             info.hitting_ray = ray;
         }
@@ -387,29 +373,27 @@ Vec3i GetColor(HitInfo hit_info, Camera &camera, Scene &scene, int depth, vector
     if(depth > scene.max_recursion_depth)
         return Vec3i{0,0,0};
 
-    int material_id = hit_info.material_id;
     Vec3f intersection_point = hit_info.hit_point;
     Vec3f normal = hit_info.normal;
     Ray ray = hit_info.hitting_ray;
+    Vec3f rayDir = ray.getDirection();
 
     float color_r = 0;
     float color_g = 0;
     float color_b = 0;
     
-    Material material = scene.materials[material_id - 1]; // Material of the object
-
-    float distanceFromLight = 0;
+    Material material = scene.GetMaterial(hit_info.material_id); // Get material of the object that is hit
 
     for (PointLight light: scene.point_lights)
     {
         Vec3f light_direction = light.position - intersection_point;
-        Vec3f l = light_direction.normalize();
-        Vec3f v = ray.getDirection().normalize() * -1;
         
         // Shadow
-        auto inShadow = RayIntersect(Ray(intersection_point + (normal * scene.shadow_ray_epsilon), light_direction), camera, scene, meshTrees,false);
-        if(inShadow.is_hit == true && inShadow.t > 0 && inShadow.t < 1) continue;
+        auto inShadow = RayIntersect(Ray(intersection_point + (normal * scene.shadow_ray_epsilon), light_direction), camera, scene, meshTrees, false);
+        if(inShadow.is_hit == true && inShadow.t >= 0 && inShadow.t <= 1) continue;
         
+        Vec3f l = light_direction.normalize();
+        Vec3f v = rayDir.normalize() * -1;
         // Diffuse 
         float distanceFromLight_squared = light_direction.length() * light_direction.length();
         float dotProduct = l.dot(normal);
@@ -442,8 +426,8 @@ Vec3i GetColor(HitInfo hit_info, Camera &camera, Scene &scene, int depth, vector
     
     if(material.is_mirror)
     {
-        Ray reflection_ray = Reflect(normal, ray.getDirection(), intersection_point);
-        auto reflection_info = RayIntersect(reflection_ray, camera, scene, meshTrees, true);
+        Ray reflection_ray = Reflect(normal, rayDir, intersection_point);
+        auto reflection_info = RayIntersect(reflection_ray, camera, scene, meshTrees, false);
         if (reflection_info.is_hit)
         {
             auto reflection_color = GetColor(reflection_info, camera, scene, depth + 1, meshTrees);
@@ -478,3 +462,27 @@ void findUniqueVertices(vector<Face> &faces, vector<int> &vertices){
     }
 }
 
+void CalculateFaceNormals(Scene& scene)
+{
+    for (int i = 0; i < scene.meshes.size(); ++i)
+    {
+        Mesh* mesh = &scene.meshes[i];
+        for (Face& face : mesh->faces)
+        {
+            Vec3f v0 = scene.GetVertex(face.v0_id);
+            Vec3f v1 = scene.GetVertex(face.v1_id);
+            Vec3f v2 = scene.GetVertex(face.v2_id);
+            Vec3f normal = (v1 - v0).cross(v2 - v0);
+            face.normal = normal.normalize();
+        }
+    }
+    for (int i = 0; i < scene.triangles.size(); ++i)
+    {
+        Triangle* triangle = &scene.triangles[i];
+        Vec3f v0 = scene.GetVertex(triangle->indices.v0_id);
+        Vec3f v1 = scene.GetVertex(triangle->indices.v1_id);
+        Vec3f v2 = scene.GetVertex(triangle->indices.v2_id);
+        Vec3f normal = (v1 - v0).cross(v2 - v0);
+        triangle->indices.normal = normal.normalize();
+    }
+}

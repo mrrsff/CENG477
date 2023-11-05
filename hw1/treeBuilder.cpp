@@ -26,27 +26,27 @@ void treeBuilder::findBoundingBox (vector<Face> &faces,Scene &scene, Vec3f &minV
         vertices.push_back(scene.vertex_data[face.v2_id - 1]);
     }
     for(Vec3f vertex : vertices){
-        if(vertex[0] < minVertex[0]) minVertex.x = vertex[0];
-        if(vertex[1] < minVertex[1]) minVertex.y = vertex[1];
-        if(vertex[2] < minVertex[2]) minVertex.z = vertex[2];
-
-        if(vertex[0] > maxVertex[0]) maxVertex.x = vertex[0];
-        if(vertex[1] > maxVertex[1]) maxVertex.y = vertex[1];
-        if(vertex[2] > maxVertex[2]) maxVertex.z = vertex[2];
+        for(int i = 0; i < 3; i++){
+            if(vertex[i] < minVertex[i]){
+                minVertex[i] = vertex[i];
+            }
+            if(vertex[i] > maxVertex[i]){
+                maxVertex[i] = vertex[i];
+            }
+        }
     }
-    if(minVertex[0] == INFINITY) minVertex.x = 0;
-    if(minVertex[1] == INFINITY) minVertex.y = 0;
-    if(minVertex[2] == INFINITY) minVertex.z = 0;
-
-    if(maxVertex[0] == -INFINITY) maxVertex.x = 0;
-    if(maxVertex[1] == -INFINITY) maxVertex.y = 0;
-    if(maxVertex[2] == -INFINITY) maxVertex.z = 0;
+    for(int i = 0; i < 3; i++){ // To avoid the case where minVertex == maxVertex
+        if(minVertex[i] == maxVertex[i]){
+            minVertex[i] -= 0.01;
+            maxVertex[i] += 0.01;
+        }
+    }
 }
 
-Node3D* treeBuilder::buildTree(vector<Face> &faces, vector<int> &vertex_ids,Scene &scene, int depth, Vec3f minVertex, Vec3f maxVertex){
+Node3D* treeBuilder::buildTree(vector<Face> faces, vector<int> vertex_ids,Scene &scene, int depth, Vec3f minVertex, Vec3f maxVertex){
     if (vertex_ids.size() == 0){
         // zero element given
-        return NULL;
+        return nullptr;
     }
 
     Node3D* node = new Node3D();
@@ -56,21 +56,24 @@ Node3D* treeBuilder::buildTree(vector<Face> &faces, vector<int> &vertex_ids,Scen
     node->boundingMax = maxVertex;
     node->depth = depth;
 
-    if(vertex_ids.size() < 6){
-        node->left = NULL;
-        node->right = NULL;
+    int axis = depth % 3;
+    sortVertices(vertex_ids, scene, axis); // Sorts the array in place. Sorts the vertices according to its position on the axis
+    
+    int middleIndex = vertex_ids.size() / 2;
+    auto middle = scene.GetVertex(vertex_ids[middleIndex]);
+    node->vertex = middle;
+
+    if(vertex_ids.size() < 8){
+        node->left = nullptr;
+        node->right = nullptr;
         return node;
     }
 
-    sortVertices(vertex_ids, scene, depth % 3); // Sorts the array in place. Sorts the vertices according to its position on the axis
-
-    vector<int> leftVertices = vector<int>(vertex_ids.begin(), vertex_ids.begin() + vertex_ids.size() / 2);
+    vector<int> leftVertices = vector<int>(vertex_ids.begin(), vertex_ids.begin() + vertex_ids.size() / 2 + 1);
     vector<int> rightVertices = vector<int>(vertex_ids.begin() + vertex_ids.size() / 2, vertex_ids.end());
-    vector<Face> leftFaces;
-    vector<Face> rightFaces;
+    vector<Face> leftFaces = vector<Face>();
+    vector<Face> rightFaces = vector<Face>();
     
-    auto middle = scene.vertex_data[vertex_ids[vertex_ids.size() / 2] - 1];
-    int axis = depth % 3;
     for(Face face : faces)
     {
         auto v0 = scene.vertex_data[face.v0_id - 1];
@@ -78,36 +81,22 @@ Node3D* treeBuilder::buildTree(vector<Face> &faces, vector<int> &vertex_ids,Scen
         auto v2 = scene.vertex_data[face.v2_id - 1];
 
         // A face can be in both left and right nodes because of the way we split the vertices, but this is not a problem
-        if(v0[axis] <= middle[axis] || v1[axis] <= middle[axis] || v2[axis] <= middle[axis])
-        {
+        if(v0[axis] <= middle[axis] && v1[axis] <= middle[axis] && v2[axis] <= middle[axis]){
             leftFaces.push_back(face);
         }
-        if(v0[axis] >= middle[axis] || v1[axis] >= middle[axis] || v2[axis] >= middle[axis])
-        {
+        if(v0[axis] >= middle[axis] && v1[axis] >= middle[axis] && v2[axis] >= middle[axis]){
+            rightFaces.push_back(face);
+        }
+        else{
+            leftFaces.push_back(face);
             rightFaces.push_back(face);
         }
     }
     Vec3f leftMin = minVertex;
-    Vec3f leftMax;
-    if(axis == 0){
-        leftMax = Vec3f{middle[0], maxVertex[1], maxVertex[2]};
-    }
-    else if(axis == 1){
-        leftMax = Vec3f{maxVertex[0], middle[1], maxVertex[2]};
-    }
-    else{
-        leftMax = Vec3f{maxVertex[0], maxVertex[1], middle[2]};
-    }
-    Vec3f rightMin;
-    if(axis == 0){
-        rightMin = Vec3f{middle[0], minVertex[1], minVertex[2]};
-    }
-    else if(axis == 1){
-        rightMin = Vec3f{minVertex[0], middle[1], minVertex[2]};
-    }
-    else{
-        rightMin = Vec3f{minVertex[0], minVertex[1], middle[2]};
-    }
+    Vec3f leftMax = maxVertex;
+    leftMax[axis] = middle[axis]; 
+    Vec3f rightMin = minVertex;
+    rightMin[axis] = middle[axis];
     Vec3f rightMax = maxVertex;
     /* findBoundingBox(leftFaces, scene, leftMin, leftMax);
     findBoundingBox(rightFaces, scene, rightMin, rightMax); */
@@ -118,17 +107,7 @@ Node3D* treeBuilder::buildTree(vector<Face> &faces, vector<int> &vertex_ids,Scen
 }
 
 void treeBuilder::sortVertices(vector<int> &vertex_ids,Scene &scene, int axis){
-
-    /* sort(vertex_ids.begin(), vertex_ids.end(), [&scene, &axis](int a, int b) { 
+    sort(vertex_ids.begin(), vertex_ids.end(), [&scene, &axis](int a, int b) { 
         return scene.vertex_data[a - 1][axis] < scene.vertex_data[b - 1][axis];
-    }); */
-    for(int i = 0; i < vertex_ids.size(); i++){
-        for(int j = i + 1; j < vertex_ids.size(); j++){
-            if(scene.vertex_data[vertex_ids[i] - 1][axis] > scene.vertex_data[vertex_ids[j] - 1][axis]){
-                int temp = vertex_ids[i];
-                vertex_ids[i] = vertex_ids[j];
-                vertex_ids[j] = temp;
-            }
-        }
-    }
+    });
 }

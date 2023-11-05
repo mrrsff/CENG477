@@ -13,7 +13,7 @@ class treeBuilder{
         treeBuilder();
         ~treeBuilder();
         // Builds the tree recursively
-        Node3D* buildTree(vector<Face> &faces, vector<int> &vertex_ids,Scene &scene, int depth, Vec3f minVertex, Vec3f maxVertex);
+        Node3D* buildTree(vector<Face> faces, vector<int> vertex_ids,Scene &scene, int depth, Vec3f minVertex, Vec3f maxVertex);
         // Finds the bounding box of the given faces
         void findBoundingBox (vector<Face> &faces,Scene &scene, Vec3f &minVertex, Vec3f &maxVertex);
         // Sorts the vertices according to its position on the axis (sorted vertices are stored in vertex_ids)

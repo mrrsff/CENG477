@@ -8,6 +8,7 @@ using namespace std;
 
 class Node3D {
     public:
+        Vec3f vertex;
         Vec3f boundingMin;
         Vec3f boundingMax;
         int depth;

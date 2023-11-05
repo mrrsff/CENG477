@@ -53,7 +53,7 @@ namespace parser
         {
             return Vec3f{this->y * other.z - this->z * other.y, this->z * other.x - this->x * other.z, this->x * other.y - this->y * other.x};
         };
-        float operator[](int index)
+        float& operator[](int index)
         {
             if (index == 0)
                 return this->x;
@@ -62,7 +62,7 @@ namespace parser
             else if (index == 2)
                 return this->z;
             else
-                return 0;
+                return this->x;
         };
         bool operator==(Vec3f other) // 
         {
@@ -113,6 +113,7 @@ namespace parser
     
     struct Face
     {
+        Vec3f normal;
         int v0_id;
         int v1_id;
         int v2_id;
@@ -159,6 +160,10 @@ namespace parser
         Vec3f GetVertex(int vertex_id)
         {
             return this->vertex_data[vertex_id - 1];
+        };
+        Material GetMaterial(int material_id)
+        {
+            return this->materials[material_id - 1];
         };
     };
 }
