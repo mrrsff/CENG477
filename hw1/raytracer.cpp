@@ -227,19 +227,33 @@ float RayTreeIntersect(Ray ray, Node3D *node, Scene &scene, Face& face_out, bool
     // If node has children, check them
     if(node->left != nullptr || node->right != nullptr)
     {
-        float t1 = RayTreeIntersect(ray, node->left, scene, face_out, backface_culling);
-        float t2 = RayTreeIntersect(ray, node->right, scene, face_out, backface_culling);
+        Face f1 = Face();
+        Face f2 = Face();
+        float t1 = RayTreeIntersect(ray, node->left, scene, f1, backface_culling);
+        float t2 = RayTreeIntersect(ray, node->right, scene, f2, backface_culling);
         
         if (t1 > 0 && t2 > 0) 
             if(t1 < t2)
+            {
+                face_out = f1;
                 return t1;
+            }
             else
+            {
+                face_out = f2;
                 return t2;
+            }
         // If one of the children is hit, return it
         else if (t1 > 0) 
-            return t1; 
+            {
+                face_out = f1;
+                return t1;
+            }
         else if (t2 > 0) 
-            return t2;
+            {
+                face_out = f2;
+                return t2;
+            }
         else 
             return -1; // If no child is hit, return -1
     }

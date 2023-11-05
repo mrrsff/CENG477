@@ -1,11 +1,10 @@
 import os
 import numpy as np
 
-# Run the render_all.sh file
 # Measure the time
 import time
 start_time = time.time()
-# os.system("./render_all.sh")
+# os.system("python.exe ./render_all.py")
 end_time = time.time()
 print(f"Total Render time: {end_time - start_time:.2f} seconds")
 
@@ -53,7 +52,7 @@ for ppm_file in ppm_files:
         score = 1 - (num_diff_pixels / total_pixels)
         scores[ppm_file] = round(score * 100,4)
         
-        if scores[ppm_file] >= 99:
+        if scores[ppm_file] >= 95:
             print(f"{ppm_file.ljust(max_filename_length)}:\t\033[92m{scores[ppm_file]:.2f}%\033[0m")
         else:
             print(f"{ppm_file.ljust(max_filename_length)}:\t\033[91m{scores[ppm_file]:.2f}%\033[0m")

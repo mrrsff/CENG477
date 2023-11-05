@@ -63,7 +63,7 @@ Node3D* treeBuilder::buildTree(vector<Face> faces, vector<int> vertex_ids,Scene 
     auto middle = scene.GetVertex(vertex_ids[middleIndex]);
     node->vertex = middle;
 
-    if(vertex_ids.size() < 8){
+    if(vertex_ids.size() < 4){
         node->left = nullptr;
         node->right = nullptr;
         return node;
