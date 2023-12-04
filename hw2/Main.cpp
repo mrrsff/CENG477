@@ -4,7 +4,6 @@
 
 using namespace std;
 
-//TODO: Start implementations here
 /*
     1. Transform vertices to the viewport
     2. Line drawing algorithm
