@@ -1,5 +1,6 @@
 #ifndef __ROTATION_H__
 #define __ROTATION_H__
+#include <iostream>
 
 class Rotation
 {

@@ -1,5 +1,6 @@
 #ifndef __SCALING_H__
 #define __SCALING_H__
+#include <iostream>
 
 class Scaling
 {

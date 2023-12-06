@@ -1,5 +1,6 @@
 #ifndef __TRANSLATION_H__
 #define __TRANSLATION_H__
+#include <iostream>
 
 class Translation
 {
