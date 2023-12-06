@@ -343,7 +343,7 @@ void Scene::convertPPMToPNG(string ppmFileName)
 
 	// TODO: Change implementation if necessary.
 	command = "./magick convert " + ppmFileName + " " + ppmFileName + ".png";
-	int res = system(command.c_str());sformations, clipping, culling, rasterization are done here.
+	int res = system(command.c_str());
 */
 }
 
