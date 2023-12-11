@@ -229,7 +229,9 @@ Scene::Scene(const char *xmlPath)
 		int v1, v2, v3;
 		XMLElement *meshFacesElement = meshElement->FirstChildElement("Faces");
 		str = meshFacesElement->GetText();
-		cloneStr = strdup(str);
+		size_t length = strlen(str);
+		cloneStr = new char[length+1];
+		memcpy(cloneStr,str, length + 1);
 
 		row = strtok(cloneStr, "\n");
 		while (row != NULL)
@@ -343,7 +345,7 @@ void Scene::convertPPMToPNG(string ppmFileName)
 
 	// TODO: Change implementation if necessary.
 	command = "./magick convert " + ppmFileName + " " + ppmFileName + ".png";
-	system(command.c_str());
+	int res = system(command.c_str());
 }
 
 /*
