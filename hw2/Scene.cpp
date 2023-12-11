@@ -446,8 +446,7 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 
 				transformationMatrix = multiplyMatrixWithMatrix(transformationMatrix, rotationMatrix);
 			}
-
-			// TODO: Wireframe and Solid rendering
+		
 			for(Triangle triangle : mesh->triangles){
 				Vec3* v1 = this->vertices[triangle.vertexIds[0] - 1];
 				Vec3* v2 = this->vertices[triangle.vertexIds[1] - 1];
@@ -487,7 +486,7 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 				Vec3 v2Vec3TransformedCameraProjectionViewport(v2Vec4TransformedCameraProjectionViewport.x, v2Vec4TransformedCameraProjectionViewport.y, v2Vec4TransformedCameraProjectionViewport.z);
 				Vec3 v3Vec3TransformedCameraProjectionViewport(v3Vec4TransformedCameraProjectionViewport.x, v3Vec4TransformedCameraProjectionViewport.y, v3Vec4TransformedCameraProjectionViewport.z);
 
-				//TODO: Color interpolation
+				//TODO: Color interpolation (wireframe and solid rendering)
 				Color* v1Color = this->colorsOfVertices[triangle.vertexIds[0] - 1];
 				Color* v2Color = this->colorsOfVertices[triangle.vertexIds[1] - 1];
 				Color* v3Color = this->colorsOfVertices[triangle.vertexIds[2] - 1];
