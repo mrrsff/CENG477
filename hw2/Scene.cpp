@@ -384,6 +384,7 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 	}
 
 	// Viewport Transformation Matrix
+	// TODO: xmin, ymin
 	double viewportValues[4][4] = {
 		{camera->horRes / 2, 0, 0, (camera->horRes - 1) / 2},
 		{0, camera->verRes / 2, 0, (camera->verRes - 1) / 2},
@@ -407,10 +408,7 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 				};
 				Matrix4 translationMatrix(translationValues);
 
-				// TODO: Multiply operation overload
-				//transformationMatrix = transformationMatrix * translationMatrix;
-
-				transformationMatrix = multiplyMatrixWithMatrix(transformationMatrix, translationMatrix);
+				transformationMatrix = transformationMatrix * translationMatrix;
 			}
 
 			// Scaling
@@ -424,10 +422,7 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 				};
 				Matrix4 scalingMatrix(scalingValues);
 
-				// TODO: Multiply operation overload
-				//transformationMatrix = transformationMatrix * translationMatrix;
-
-				transformationMatrix = multiplyMatrixWithMatrix(transformationMatrix, scalingMatrix);
+				transformationMatrix = transformationMatrix * scalingMatrix;
 			}
 
 			// Rotation
@@ -441,12 +436,10 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 				};
 				Matrix4 rotationMatrix(rotationValues);
 
-				// TODO: Multiply operation overload
-				//transformationMatrix = transformationMatrix * translationMatrix;
-
-				transformationMatrix = multiplyMatrixWithMatrix(transformationMatrix, rotationMatrix);
+				transformationMatrix = transformationMatrix * rotationMatrix;
 			}
-		
+
+			// Applying matrices to vertices
 			for(Triangle triangle : mesh->triangles){
 				Vec3* v1 = this->vertices[triangle.vertexIds[0] - 1];
 				Vec3* v2 = this->vertices[triangle.vertexIds[1] - 1];
@@ -471,10 +464,9 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 				// Perspective division
 				if(camera->projectionType == PERSPECTIVE_PROJECTION){
 					
-					//TODO: Scalar divide operator overload
-					//v1Vec4TransformedCameraProjection = v1Vec4TransformedCameraProjection / v1Vec4TransformedCameraProjection.t;
-					//v2Vec4TransformedCameraProjection = v2Vec4TransformedCameraProjection / v2Vec4TransformedCameraProjection.t;
-					//v3Vec4TransformedCameraProjection = v3Vec4TransformedCameraProjection / v3Vec4TransformedCameraProjection.t;
+					v1Vec4TransformedCameraProjection = v1Vec4TransformedCameraProjection / v1Vec4TransformedCameraProjection.t;
+					v2Vec4TransformedCameraProjection = v2Vec4TransformedCameraProjection / v2Vec4TransformedCameraProjection.t;
+					v3Vec4TransformedCameraProjection = v3Vec4TransformedCameraProjection / v3Vec4TransformedCameraProjection.t;
 				}
 
 				Vec4 v1Vec4TransformedCameraProjectionViewport = multiplyMatrixWithVec4(viewportTransformationMatrix, v1Vec4TransformedCameraProjection);
@@ -486,11 +478,23 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 				Vec3 v2Vec3TransformedCameraProjectionViewport(v2Vec4TransformedCameraProjectionViewport.x, v2Vec4TransformedCameraProjectionViewport.y, v2Vec4TransformedCameraProjectionViewport.z);
 				Vec3 v3Vec3TransformedCameraProjectionViewport(v3Vec4TransformedCameraProjectionViewport.x, v3Vec4TransformedCameraProjectionViewport.y, v3Vec4TransformedCameraProjectionViewport.z);
 
-				//TODO: Color interpolation (wireframe and solid rendering)
 				Color* v1Color = this->colorsOfVertices[triangle.vertexIds[0] - 1];
 				Color* v2Color = this->colorsOfVertices[triangle.vertexIds[1] - 1];
 				Color* v3Color = this->colorsOfVertices[triangle.vertexIds[2] - 1];
+			
+				cout << v1Vec3TransformedCameraProjectionViewport << "v1: " << *v1 << endl;
+				cout << v2Vec3TransformedCameraProjectionViewport << "v2: " << *v2 << endl;
+				cout << v3Vec3TransformedCameraProjectionViewport << "v3: " << *v3 << endl;
+				cout << "-------------------" << endl;
 
+				/*
+				image[v1Vec3TransformedCameraProjectionViewport.x][v1Vec3TransformedCameraProjectionViewport.y] = *v1Color;
+				image[v2Vec3TransformedCameraProjectionViewport.x][v2Vec3TransformedCameraProjectionViewport.y] = *v2Color;
+				image[v3Vec3TransformedCameraProjectionViewport.x][v3Vec3TransformedCameraProjectionViewport.y] = *v3Color;
+				*/
+
+				//TODO: Line drawing (wireframe rendering)
+				//TODO: Triangle rasterization (solid rendering)
 			}
 		}
 	}

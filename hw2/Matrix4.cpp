@@ -47,3 +47,25 @@ std::ostream &operator<<(std::ostream &os, const Matrix4 &m)
 
     return os;
 }
+
+Matrix4 Matrix4::operator*(const Matrix4 &other)
+{
+    Matrix4 result;
+    double total;
+
+    for (int i = 0; i < 4; i++)
+    {
+        for (int j = 0; j < 4; j++)
+        {
+            total = 0;
+            for (int k = 0; k < 4; k++)
+            {
+                total += this->values[i][k] * other.values[k][j];
+            }
+
+            result.values[i][j] = total;
+        }
+    }
+
+    return result;
+}

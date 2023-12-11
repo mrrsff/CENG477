@@ -17,6 +17,8 @@ public:
     double getNthComponent(int n);
 
     friend std::ostream &operator<<(std::ostream &os, const Vec4 &v);
+
+    Vec4 operator/(double d);
 };
 
 #endif

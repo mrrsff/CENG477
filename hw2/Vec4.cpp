@@ -61,3 +61,8 @@ std::ostream &operator<<(std::ostream &os, const Vec4 &v)
     os << std::fixed << std::setprecision(6) << "[" << v.x << ", " << v.y << ", " << v.z << ", " << v.t << "]";
     return os;
 }
+
+Vec4 Vec4::operator/(double d)
+{
+    return Vec4(this->x / d, this->y / d, this->z / d, this->t / d, this->colorId);
+}
