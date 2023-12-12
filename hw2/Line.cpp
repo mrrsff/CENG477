@@ -2,36 +2,36 @@
 
 Line::Line()
 {
-	origin = Vec3();
-	direction = Vec3();
+	start = Vec3();
+	end = Vec3();
 }
 
-Line::Line(Vec3 origin, Vec3 direction)
+Line::Line(Vec3 start = Vec3(), Vec3 end = Vec3())
 {
-	this->origin = origin;
-	this->direction = direction;
+	this->start = start;
+	this->end = end;
 }
 
 Line::Line(const Line &other)
 {
-	this->origin = other.origin;
-	this->direction = other.direction;
+	this->start = other.start;
+	this->end = other.end;
 }
 
 Line &Line::operator=(const Line &other)
 {
-	this->origin = other.origin;
-	this->direction = other.direction;
-	return *this;
+	this->start = other.start;
+	this->end = other.end;
+	return *this;	
 }
 
 std::ostream &operator<<(std::ostream &os, const Line &l)
 {
-	os << "origin: " << l.origin << " direction: " << l.direction;
+	os << "Line: " << l.start << " " << l.end;
 	return os;
 }
 
 Vec3 Line::getPoint(double t)
 {
-	return origin + direction * t;
+	return start + (end - start) * t;
 }
