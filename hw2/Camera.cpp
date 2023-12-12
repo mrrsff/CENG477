@@ -1,5 +1,8 @@
 #include <iomanip>
 #include "Camera.h"
+#include "Helpers.h"
+#include "Matrix4.h"
+#include <cmath>
 
 Camera::Camera() {}
 
@@ -59,6 +62,45 @@ std::ostream &operator<<(std::ostream &os, const Camera &c)
        << "\tu: " << c.u << " v: " << c.v << " w: " << c.w << std::endl
        << std::fixed << std::setprecision(3) << "\tleft: " << c.left << " right: " << c.right << " bottom: " << c.bottom << " top: " << c.top << std::endl
        << "\tnear: " << c.near << " far: " << c.far << " resolutions: " << c.horRes << "x" << c.verRes << " fileName: " << c.outputFilename;
+}
 
-    return os;
+Matrix4 Camera::getCameraTransformationMatrix()
+{
+    double cameraValues[4][4] = {{this->u.x, this->u.y, this->u.z, -(this->u.x*this->position.x + this->u.y*this->position.y + this->u.z*this->position.z)},
+								  {this->v.x, this->v.y, this->v.z, -(this->v.x*this->position.x + this->v.y*this->position.y + this->v.z*this->position.z)},
+								  {this->w.x, this->w.y, this->w.z, -(this->w.x*this->position.x + this->w.y*this->position.y + this->w.z*this->position.z)},
+								  {0, 0, 0, 1}};
+	return Matrix4(cameraValues);
+}
+
+Matrix4 Camera::getProjectionTransformationMatrix()
+{
+	if (this->projectionType == ORTOGRAPHIC_PROJECTION) {
+		double projectionValues[4][4] = {
+			{2 / (this->right - this->left), 0, 0, -(this->right + this->left) / (this->right - this->left)},
+			{0, 2 / (this->top - this->bottom), 0, -(this->top + this->bottom) / (this->top - this->bottom)},
+			{0, 0, 2 / (this->near - this->far), -(this->near + this->far) / (this->near - this->far)},
+			{0, 0, 0, 1}
+		};
+        return Matrix4(projectionValues);
+	} else {
+		double projectionValues[4][4] = {
+			{2 * this->near / (this->right - this->left), 0, (this->right + this->left) / (this->right - this->left), 0},
+			{0, 2 * this->near / (this->top - this->bottom), (this->top + this->bottom) / (this->top - this->bottom), 0},
+			{0, 0, (this->near + this->far) / (this->near - this->far), 2 * this->near * this->far / (this->near - this->far)},
+			{0, 0, -1, 0}
+		};
+		return Matrix4(projectionValues);
+	}
+}
+
+Matrix4 Camera::getViewportTransformationMatrix()
+{
+    double viewportValues[4][4] = {
+		{this->horRes / 2, 0, 0, (this->horRes - 1) / 2},
+		{0, this->verRes / 2, 0, (this->verRes - 1) / 2},
+		{0, 0, 0.5, 0.5},
+		{0, 0, 0, 1}
+	};
+    return Matrix4(viewportValues);
 }

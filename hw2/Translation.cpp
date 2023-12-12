@@ -1,5 +1,8 @@
 #include <iomanip>
 #include "Translation.h"
+#include "Helpers.h"
+#include "Matrix4.h"
+#include <cmath>
 
 Translation::Translation()
 {
@@ -15,6 +18,17 @@ Translation::Translation(int translationId, double tx, double ty, double tz)
     this->tx = tx;
     this->ty = ty;
     this->tz = tz;
+}
+
+Matrix4 Translation::getTranslationMatrix()
+{
+    double translationValues[4][4] = {
+					{1, 0, 0, this->tx},
+					{0, 1, 0, this->ty},
+					{0, 0, 1, this->tz},
+					{0, 0, 0, 1}
+				};
+    return Matrix4(translationValues);
 }
 
 std::ostream &operator<<(std::ostream &os, const Translation &t)

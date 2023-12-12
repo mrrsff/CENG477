@@ -343,9 +343,9 @@ void Scene::convertPPMToPNG(string ppmFileName)
 {
 	string command;
 
-	// TODO: Change implementation if necessary.
-	command = "./magick convert " + ppmFileName + " " + ppmFileName + ".png";
-	int res = system(command.c_str());
+	// // TODO: Change implementation if necessary.
+	// command = "./magick convert " + ppmFileName + " " + ppmFileName + ".png";
+	// int res = system(command.c_str());
 }
 
 /*
@@ -356,110 +356,64 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 	// TODO: Implement this function
 
 	// Camera Transformation Matrix
-	double cameraValues[4][4] = {{camera->u.x, camera->u.y, camera->u.z, -(camera->u.x*camera->position.x + camera->u.y*camera->position.y + camera->u.z*camera->position.z)},
-								  {camera->v.x, camera->v.y, camera->v.z, -(camera->v.x*camera->position.x + camera->v.y*camera->position.y + camera->v.z*camera->position.z)},
-								  {camera->w.x, camera->w.y, camera->w.z, -(camera->w.x*camera->position.x + camera->w.y*camera->position.y + camera->w.z*camera->position.z)},
-								  {0, 0, 0, 1}};
-	Matrix4 cameraTransformationMatrix(cameraValues);
+	Matrix4 cameraTransformationMatrix = camera->getCameraTransformationMatrix();
 
 	// Projection Transformation Matrix
-	Matrix4 projectionTransformationMatrix;
-
-	if (camera->projectionType == ORTOGRAPHIC_PROJECTION) {
-		double projectionValues[4][4] = {
-			{2 / (camera->right - camera->left), 0, 0, -(camera->right + camera->left) / (camera->right - camera->left)},
-			{0, 2 / (camera->top - camera->bottom), 0, -(camera->top + camera->bottom) / (camera->top - camera->bottom)},
-			{0, 0, 2 / (camera->near - camera->far), -(camera->near + camera->far) / (camera->near - camera->far)},
-			{0, 0, 0, 1}
-		};
-		projectionTransformationMatrix = Matrix4(projectionValues);
-	} else {
-		double projectionValues[4][4] = {
-			{2 * camera->near / (camera->right - camera->left), 0, (camera->right + camera->left) / (camera->right - camera->left), 0},
-			{0, 2 * camera->near / (camera->top - camera->bottom), (camera->top + camera->bottom) / (camera->top - camera->bottom), 0},
-			{0, 0, (camera->near + camera->far) / (camera->near - camera->far), 2 * camera->near * camera->far / (camera->near - camera->far)},
-			{0, 0, -1, 0}
-		};
-		projectionTransformationMatrix = Matrix4(projectionValues);
-	}
+	Matrix4 projectionTransformationMatrix = camera->getProjectionTransformationMatrix();	
 
 	// Viewport Transformation Matrix
 	// TODO: xmin, ymin
-	double viewportValues[4][4] = {
-		{camera->horRes / 2, 0, 0, (camera->horRes - 1) / 2},
-		{0, camera->verRes / 2, 0, (camera->verRes - 1) / 2},
-		{0, 0, 0.5, 0.5},
-		{0, 0, 0, 1}
-	};
-
-	Matrix4 viewportTransformationMatrix(viewportValues);
+	Matrix4 viewportTransformationMatrix = camera->getViewportTransformationMatrix();
 
 	for(Mesh* mesh : this->meshes){
 		Matrix4 transformationMatrix = getIdentityMatrix();
 		for(int i = 0; i < mesh->numberOfTransformations ; i++){
-			// Translation
-			if(mesh->transformationTypes[i] == 't'){
-				Translation* translation = this->translations[mesh->transformationIds[i] - 1];
-				double translationValues[4][4] = {
-					{1, 0, 0, translation->tx},
-					{0, 1, 0, translation->ty},
-					{0, 0, 1, translation->tz},
-					{0, 0, 0, 1}
-				};
-				Matrix4 translationMatrix(translationValues);
 
-				transformationMatrix = transformationMatrix * translationMatrix;
+			switch(mesh->transformationTypes[i])
+			{
+				case 't':
+				{
+					Translation* translation = this->translations[mesh->transformationIds[i] - 1];
+					transformationMatrix = transformationMatrix * translation->getTranslationMatrix();
+					break;
+				}
+				case 's':
+				{
+					Scaling* scaling = this->scalings[mesh->transformationIds[i] - 1];
+					transformationMatrix = transformationMatrix * scaling->getScalingMatrix();
+					break;
+				}
+				case 'r':
+				{
+					Rotation* rotation = this->rotations[mesh->transformationIds[i] - 1];
+					transformationMatrix = transformationMatrix * rotation->getRotationMatrix();
+					break;
+				}
+				default:
+					break;
 			}
-
-			// Scaling
-			if(mesh->transformationTypes[i] == 's'){
-				Scaling* scaling = this->scalings[mesh->transformationIds[i] - 1];
-				double scalingValues[4][4] = {
-					{scaling->sx, 0, 0, 0},
-					{0, scaling->sy, 0, 0},
-					{0, 0, scaling->sz, 0},
-					{0, 0, 0, 1}
-				};
-				Matrix4 scalingMatrix(scalingValues);
-
-				transformationMatrix = transformationMatrix * scalingMatrix;
-			}
-
-			// Rotation
-			if(mesh->transformationTypes[i] == 'r'){
-				Rotation* rotation = this->rotations[mesh->transformationIds[i] - 1];
-				double rotationValues[4][4] = {
-					{cos(rotation->angle) + pow(rotation->ux, 2) * (1 - cos(rotation->angle)), rotation->ux * rotation->uy * (1 - cos(rotation->angle)) - rotation->uz * sin(rotation->angle), rotation->ux * rotation->uz * (1 - cos(rotation->angle)) + rotation->uy * sin(rotation->angle), 0},
-					{rotation->uy * rotation->ux * (1 - cos(rotation->angle)) + rotation->uz * sin(rotation->angle), cos(rotation->angle) + pow(rotation->uy, 2) * (1 - cos(rotation->angle)), rotation->uy * rotation->uz * (1 - cos(rotation->angle)) - rotation->ux * sin(rotation->angle), 0},
-					{rotation->uz * rotation->ux * (1 - cos(rotation->angle)) - rotation->uy * sin(rotation->angle), rotation->uz * rotation->uy * (1 - cos(rotation->angle)) + rotation->ux * sin(rotation->angle), cos(rotation->angle) + pow(rotation->uz, 2) * (1 - cos(rotation->angle)), 0},
-					{0, 0, 0, 1}
-				};
-				Matrix4 rotationMatrix(rotationValues);
-
-				transformationMatrix = transformationMatrix * rotationMatrix;
-			}
-
+			cout << transformationMatrix << endl;
 			// Applying matrices to vertices
 			for(Triangle triangle : mesh->triangles){
 				Vec3* v1 = this->vertices[triangle.vertexIds[0] - 1];
 				Vec3* v2 = this->vertices[triangle.vertexIds[1] - 1];
 				Vec3* v3 = this->vertices[triangle.vertexIds[2] - 1];
 
-				Vec4 v1Vec4(v1->x, v1->y, v1->z, 1);
-				Vec4 v2Vec4(v2->x, v2->y, v2->z, 1);
-				Vec4 v3Vec4(v3->x, v3->y, v3->z, 1);
+				Vec4 v1Vec4(*v1);
+				Vec4 v2Vec4(*v2);
+				Vec4 v3Vec4(*v3);
 
-				Vec4 v1Vec4Transformed = multiplyMatrixWithVec4(transformationMatrix, v1Vec4);
-				Vec4 v2Vec4Transformed = multiplyMatrixWithVec4(transformationMatrix, v2Vec4);
-				Vec4 v3Vec4Transformed = multiplyMatrixWithVec4(transformationMatrix, v3Vec4);
+				Vec4 v1Vec4Transformed = v1Vec4 * transformationMatrix;
+				Vec4 v2Vec4Transformed = v2Vec4 * transformationMatrix;
+				Vec4 v3Vec4Transformed = v3Vec4 * transformationMatrix;
 
-				Vec4 v1Vec4TransformedCamera = multiplyMatrixWithVec4(cameraTransformationMatrix, v1Vec4Transformed);
-				Vec4 v2Vec4TransformedCamera = multiplyMatrixWithVec4(cameraTransformationMatrix, v2Vec4Transformed);
-				Vec4 v3Vec4TransformedCamera = multiplyMatrixWithVec4(cameraTransformationMatrix, v3Vec4Transformed);
+				Vec4 v1Vec4TransformedCamera = v1Vec4Transformed * cameraTransformationMatrix;
+				Vec4 v2Vec4TransformedCamera = v2Vec4Transformed * cameraTransformationMatrix;
+				Vec4 v3Vec4TransformedCamera = v3Vec4Transformed * cameraTransformationMatrix;
 
-				Vec4 v1Vec4TransformedCameraProjection = multiplyMatrixWithVec4(projectionTransformationMatrix, v1Vec4TransformedCamera);
-				Vec4 v2Vec4TransformedCameraProjection = multiplyMatrixWithVec4(projectionTransformationMatrix, v2Vec4TransformedCamera);
-				Vec4 v3Vec4TransformedCameraProjection = multiplyMatrixWithVec4(projectionTransformationMatrix, v3Vec4TransformedCamera);
+				Vec4 v1Vec4TransformedCameraProjection = v1Vec4TransformedCamera * projectionTransformationMatrix;
+				Vec4 v2Vec4TransformedCameraProjection = v2Vec4TransformedCamera * projectionTransformationMatrix;
+				Vec4 v3Vec4TransformedCameraProjection = v3Vec4TransformedCamera * projectionTransformationMatrix;
 
 				// Perspective division
 				if(camera->projectionType == PERSPECTIVE_PROJECTION){
@@ -469,32 +423,17 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 					v3Vec4TransformedCameraProjection = v3Vec4TransformedCameraProjection / v3Vec4TransformedCameraProjection.t;
 				}
 
-				Vec4 v1Vec4TransformedCameraProjectionViewport = multiplyMatrixWithVec4(viewportTransformationMatrix, v1Vec4TransformedCameraProjection);
-				Vec4 v2Vec4TransformedCameraProjectionViewport = multiplyMatrixWithVec4(viewportTransformationMatrix, v2Vec4TransformedCameraProjection);
-				Vec4 v3Vec4TransformedCameraProjectionViewport = multiplyMatrixWithVec4(viewportTransformationMatrix, v3Vec4TransformedCameraProjection);
+				Vec4 v1Vec4Transform
+				cout << "v1: " << v1Vec3TransformedCameraProjectionViewport << endl;
+				cout << "v2: " << v2Vec3TransformedCameraProjectionViewport << endl;
+				cout << "v3: " << v3Vec3TransformedCameraProjectionViewport << endl;edCameraProjectionViewport = v1Vec4TransformedCameraProjection * viewportTransformationMatrix;
+				Vec4 v2Vec4TransformedCameraProjectionViewport = v2Vec4TransformedCameraProjection * viewportTransformationMatrix;
+				Vec4 v3Vec4TransformedCameraProjectionViewport = v3Vec4TransformedCameraProjection * viewportTransformationMatrix;
 
-				// Convert to Vec3
-				Vec3 v1Vec3TransformedCameraProjectionViewport(v1Vec4TransformedCameraProjectionViewport.x, v1Vec4TransformedCameraProjectionViewport.y, v1Vec4TransformedCameraProjectionViewport.z);
-				Vec3 v2Vec3TransformedCameraProjectionViewport(v2Vec4TransformedCameraProjectionViewport.x, v2Vec4TransformedCameraProjectionViewport.y, v2Vec4TransformedCameraProjectionViewport.z);
-				Vec3 v3Vec3TransformedCameraProjectionViewport(v3Vec4TransformedCameraProjectionViewport.x, v3Vec4TransformedCameraProjectionViewport.y, v3Vec4TransformedCameraProjectionViewport.z);
-
-				Color* v1Color = this->colorsOfVertices[triangle.vertexIds[0] - 1];
-				Color* v2Color = this->colorsOfVertices[triangle.vertexIds[1] - 1];
-				Color* v3Color = this->colorsOfVertices[triangle.vertexIds[2] - 1];
-			
-				cout << v1Vec3TransformedCameraProjectionViewport << "v1: " << *v1 << endl;
-				cout << v2Vec3TransformedCameraProjectionViewport << "v2: " << *v2 << endl;
-				cout << v3Vec3TransformedCameraProjectionViewport << "v3: " << *v3 << endl;
-				cout << "-------------------" << endl;
-
-				/*
-				image[v1Vec3TransformedCameraProjectionViewport.x][v1Vec3TransformedCameraProjectionViewport.y] = *v1Color;
-				image[v2Vec3TransformedCameraProjectionViewport.x][v2Vec3TransformedCameraProjectionViewport.y] = *v2Color;
-				image[v3Vec3TransformedCameraProjectionViewport.x][v3Vec3TransformedCameraProjectionViewport.y] = *v3Color;
-				*/
-
-				//TODO: Line drawing (wireframe rendering)
-				//TODO: Triangle rasterization (solid rendering)
+				// // Convert to Vec3
+				Vec3 v1Vec3TransformedCameraProjectionViewport = Vec3(v1Vec4TransformedCameraProjectionViewport.x, v1Vec4TransformedCameraProjectionViewport.y, v1Vec4TransformedCameraProjectionViewport.z, v1Vec4TransformedCameraProjectionViewport.colorId);
+				Vec3 v2Vec3TransformedCameraProjectionViewport = Vec3(v2Vec4TransformedCameraProjectionViewport.x, v2Vec4TransformedCameraProjectionViewport.y, v2Vec4TransformedCameraProjectionViewport.z, v2Vec4TransformedCameraProjectionViewport.colorId);
+				Vec3 v3Vec3TransformedCameraProjectionViewport = Vec3(v3Vec4TransformedCameraProjectionViewport.x, v3Vec4TransformedCameraProjectionViewport.y, v3Vec4TransformedCameraProjectionViewport.z, v3Vec4TransformedCameraProjectionViewport.colorId);
 			}
 		}
 	}

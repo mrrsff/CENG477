@@ -1,6 +1,7 @@
 #ifndef __TRANSLATION_H__
 #define __TRANSLATION_H__
 #include <iostream>
+#include "Matrix4.h"
 
 class Translation
 {
@@ -10,6 +11,7 @@ public:
 
     Translation();
     Translation(int translationId, double tx, double ty, double tz);
+    Matrix4 getTranslationMatrix();
     friend std::ostream &operator<<(std::ostream &os, const Translation &t);
 };
 
