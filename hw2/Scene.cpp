@@ -348,6 +348,13 @@ void Scene::convertPPMToPNG(string ppmFileName)
 	// int res = system(command.c_str());
 }
 
+Vec4 applyTransformationMatrix(Vec3* vertex, Matrix4 transformationMatrix){
+	Vec4 vertexVec4(*vertex);
+	vertexVec4 = vertexVec4 * transformationMatrix;
+	*vertex = Vec3(vertexVec4.x, vertexVec4.y, vertexVec4.z);
+	return vertexVec4;
+}
+
 /*
 	Transformations, clipping, cullent index fiing, rasterization are done here.
 */
@@ -392,6 +399,9 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 				default:
 					break;
 			}
+			// Combine all transformations
+			Matrix4 combinedTransformationMatrix = cameraTransformationMatrix * transformationMatrix * projectionTransformationMatrix * viewportTransformationMatrix;
+
 			// Applying matrices to vertices
 			for(Triangle triangle : mesh->triangles){
 				Vec3* v1 = this->vertices[triangle.vertexIds[0] - 1];
@@ -401,35 +411,6 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 				Vec4 v1Vec4(*v1);
 				Vec4 v2Vec4(*v2);
 				Vec4 v3Vec4(*v3);
-
-				Vec4 v1Vec4Transformed = v1Vec4 * transformationMatrix;
-				Vec4 v2Vec4Transformed = v2Vec4 * transformationMatrix;
-				Vec4 v3Vec4Transformed = v3Vec4 * transformationMatrix;
-
-				Vec4 v1Vec4TransformedCamera = v1Vec4Transformed * cameraTransformationMatrix;
-				Vec4 v2Vec4TransformedCamera = v2Vec4Transformed * cameraTransformationMatrix;
-				Vec4 v3Vec4TransformedCamera = v3Vec4Transformed * cameraTransformationMatrix;
-
-				Vec4 v1Vec4TransformedCameraProjection = v1Vec4TransformedCamera * projectionTransformationMatrix;
-				Vec4 v2Vec4TransformedCameraProjection = v2Vec4TransformedCamera * projectionTransformationMatrix;
-				Vec4 v3Vec4TransformedCameraProjection = v3Vec4TransformedCamera * projectionTransformationMatrix;
-
-				// Perspective division
-				if(camera->projectionType == PERSPECTIVE_PROJECTION){
-					
-					v1Vec4TransformedCameraProjection = v1Vec4TransformedCameraProjection / v1Vec4TransformedCameraProjection.t;
-					v2Vec4TransformedCameraProjection = v2Vec4TransformedCameraProjection / v2Vec4TransformedCameraProjection.t;
-					v3Vec4TransformedCameraProjection = v3Vec4TransformedCameraProjection / v3Vec4TransformedCameraProjection.t;
-				}
-
-				Vec4 v1Vec4TransformedCameraProjectionViewport = v1Vec4TransformedCameraProjection * viewportTransformationMatrix;
-				Vec4 v2Vec4TransformedCameraProjectionViewport = v2Vec4TransformedCameraProjection * viewportTransformationMatrix;
-				Vec4 v3Vec4TransformedCameraProjectionViewport = v3Vec4TransformedCameraProjection * viewportTransformationMatrix;
-
-				// // Convert to Vec3
-				Vec3 v1Vec3TransformedCameraProjectionViewport = Vec3(v1Vec4TransformedCameraProjectionViewport.x, v1Vec4TransformedCameraProjectionViewport.y, v1Vec4TransformedCameraProjectionViewport.z, v1Vec4TransformedCameraProjectionViewport.colorId);
-				Vec3 v2Vec3TransformedCameraProjectionViewport = Vec3(v2Vec4TransformedCameraProjectionViewport.x, v2Vec4TransformedCameraProjectionViewport.y, v2Vec4TransformedCameraProjectionViewport.z, v2Vec4TransformedCameraProjectionViewport.colorId);
-				Vec3 v3Vec3TransformedCameraProjectionViewport = Vec3(v3Vec4TransformedCameraProjectionViewport.x, v3Vec4TransformedCameraProjectionViewport.y, v3Vec4TransformedCameraProjectionViewport.z, v3Vec4TransformedCameraProjectionViewport.colorId);
 			}
 		}
 	}
