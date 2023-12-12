@@ -50,6 +50,9 @@ int main(int argc, char *argv[])
             // do forward rendering pipeline operations
             scene->forwardRenderingPipeline(scene->cameras[i]);
 
+				cout << "v1: " << v1Vec3TransformedCameraProjectionViewport << endl;
+				cout << "v2: " << v2Vec3TransformedCameraProjectionViewport << endl;
+				cout << "v3: " << v3Vec3TransformedCameraProjectionViewport << endl;
             // generate PPM file
             scene->writeImageToPPMFile(scene->cameras[i]);
 
