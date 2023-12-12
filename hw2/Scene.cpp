@@ -11,6 +11,7 @@
 #include "Triangle.h"
 #include "Helpers.h"
 #include "Scene.h"
+#include "Clipping.h"
 
 using namespace tinyxml2;
 using namespace std;
@@ -348,11 +349,11 @@ void Scene::convertPPMToPNG(string ppmFileName)
 	// int res = system(command.c_str());
 }
 
-Vec4 applyTransformationMatrix(Vec3* vertex, Matrix4 transformationMatrix){
+Vec3 applyTransformationMatrix(Vec3* vertex, Matrix4& transformationMatrix){
 	Vec4 vertexVec4(*vertex);
 	vertexVec4 = vertexVec4 * transformationMatrix;
-	*vertex = Vec3(vertexVec4.x, vertexVec4.y, vertexVec4.z);
-	return vertexVec4;
+	Vec3 vertexVec3 = Vec3(vertexVec4.x, vertexVec4.y, vertexVec4.z, vertexVec4.colorId);
+	return vertexVec3;
 }
 
 /*
@@ -408,9 +409,23 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 				Vec3* v2 = this->vertices[triangle.vertexIds[1] - 1];
 				Vec3* v3 = this->vertices[triangle.vertexIds[2] - 1];
 
-				Vec4 v1Vec4(*v1);
-				Vec4 v2Vec4(*v2);
-				Vec4 v3Vec4(*v3);
+				Vec4 v1Vec4 = applyTransformationMatrix(v1, combinedTransformationMatrix);
+				Vec4 v2Vec4 = applyTransformationMatrix(v2, combinedTransformationMatrix);
+				Vec4 v3Vec4 = applyTransformationMatrix(v3, combinedTransformationMatrix);
+
+				Vec3 v1Vec3 = Vec3(v1Vec4.x, v1Vec4.y, v1Vec4.z, v1Vec4.colorId);
+				Vec3 v2Vec3 = Vec3(v2Vec4.x, v2Vec4.y, v2Vec4.z, v2Vec4.colorId);
+				Vec3 v3Vec3 = Vec3(v3Vec4.x, v3Vec4.y, v3Vec4.z, v3Vec4.colorId);
+
+				// Clipping
+				Line line1 = Line(v1Vec3, v2Vec3);
+				Line line2 = Line(v2Vec3, v3Vec3);
+				Line line3 = Line(v3Vec3, v1Vec3);
+
+				if(!liangBarsky(*this, *camera, line1) || !liangBarsky(*this, *camera, line2) || !liangBarsky(*this, *camera, line3)){
+					continue; 
+				}
+				
 			}
 		}
 	}

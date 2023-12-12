@@ -24,7 +24,7 @@ bool visible(double den, double num, int& tE, int& tL)
 	return true;
 }
 
-bool lianBarsky(Scene& scene, Camera& camera, Line& line) // Line clipping
+bool liangBarsky(Scene& scene, Camera& camera, Line& line) // Line clipping
 {
 	double xmin = 0, xmax = camera.horRes;
 	double ymin = 0, ymax = camera.verRes;
@@ -63,5 +63,5 @@ bool lianBarsky(Scene& scene, Camera& camera, Line& line) // Line clipping
 
 bool sutherlandHodgman(Scene& scene, Camera& camera, Mesh& mesh) // Polygon clipping
 {
-	
+	return false;
 }
