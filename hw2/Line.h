@@ -6,11 +6,11 @@
 class Line
 {
 	public:
-		Vec3 start;
-		Vec3 end;
+		Vec3 p0;
+		Vec3 p1;
 	
 		Line();
-		Line(Vec3 start, Vec3 end);
+		Line(Vec3 p0, Vec3 p1);
 		Line(const Line &other);
 		Line &operator=(const Line &other);
 		friend std::ostream &operator<<(std::ostream &os, const Line &l);
