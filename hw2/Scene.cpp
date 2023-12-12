@@ -349,7 +349,7 @@ void Scene::convertPPMToPNG(string ppmFileName)
 }
 
 /*
-	Transformations, clipping, culling, rasterization are done here.
+	Transformations, clipping, cullent index fiing, rasterization are done here.
 */
 void Scene::forwardRenderingPipeline(Camera *camera)
 {

@@ -5,13 +5,17 @@
 using namespace std;
 
 /*
-    1. Transform vertices to the viewport
+    1. Transform vertices to the viewport ---- DONE
     2. Line drawing algorithm
+        2.1 Midpoint Algorithm
+        2.2 Bresenham's Algorithm
     3. Triangle rasterization
+        3.1 Barycentric coordinates
     4. Clipping Algorithm
         4.1 Cohen-Sutherland (simple)
         4.2 Liang-Barsky (better)
     5. Backface Culling
+    6. Depth Buffer Algorithm
 
     Notes:
     - The rasterizer should be able to handle multiple objects
