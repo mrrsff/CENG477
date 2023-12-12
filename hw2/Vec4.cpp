@@ -37,6 +37,15 @@ Vec4::Vec4(const Vec4 &other)
     this->colorId = other.colorId;
 }
 
+Vec4::Vec4(const Vec3& other)
+{
+    this->x = other.x;
+    this->y = other.y;
+    this->z = other.z;
+    this->t = 1.0;
+    this->colorId = other.colorId;
+}
+
 double Vec4::getNthComponent(int n)
 {
     switch (n)
@@ -65,4 +74,21 @@ std::ostream &operator<<(std::ostream &os, const Vec4 &v)
 Vec4 Vec4::operator/(double d)
 {
     return Vec4(this->x / d, this->y / d, this->z / d, this->t / d, this->colorId);
+}
+
+Vec4 Vec4::operator*(Matrix4& m)
+{
+    double result[4];
+    double total;
+
+    for (int i = 0; i < 4; i++)
+    {
+        total = 0;
+        for (int j = 0; j < 4; j++)
+        {
+            total += m.values[i][j] * this->getNthComponent(j);
+        }
+        result[i] = total;
+    }
+    return Vec4(result[0], result[1], result[2], result[3], this->colorId);
 }

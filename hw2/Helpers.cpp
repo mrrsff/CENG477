@@ -19,7 +19,7 @@ double dotProductVec3(Vec3 a, Vec3 b)
 }
 
 /*
- * Find length (|v|) of vec3 v.
+ * Find length (|v|) of vec3 v.j
  */
 double magnitudeOfVec3(Vec3 v)
 {
@@ -147,9 +147,9 @@ Matrix4 multiplyMatrixWithMatrix(Matrix4 m1, Matrix4 m2)
 /*
  * Multiply matrix m (Matrix4) with vector v (vec4) and store the result in vector r (vec4).
  */
-Vec4 multiplyMatrixWithVec4(Matrix4 m, Vec4 v)
+Vec4 multiplyMatrixWithVec4(Matrix4& m, Vec4 v)
 {
-    double values[4];
+    double result[4];
     double total;
 
     for (int i = 0; i < 4; i++)
@@ -159,8 +159,7 @@ Vec4 multiplyMatrixWithVec4(Matrix4 m, Vec4 v)
         {
             total += m.values[i][j] * v.getNthComponent(j);
         }
-        values[i] = total;
+        result[i] = total;
     }
-
-    return Vec4(values[0], values[1], values[2], values[3], v.colorId);
+    return Vec4(result[0], result[1], result[2], result[3]);
 }

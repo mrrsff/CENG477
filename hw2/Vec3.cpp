@@ -49,6 +49,7 @@ double Vec3::getNthComponent(int n)
     }
 }
 
+
 std::ostream &operator<<(std::ostream &os, const Vec3 &v)
 {
     os << std::fixed << std::setprecision(6) << "[" << v.x << ", " << v.y << ", " << v.z << "]";
