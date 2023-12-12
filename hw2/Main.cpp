@@ -49,7 +49,6 @@ int main(int argc, char *argv[])
 
             // do forward rendering pipeline operations
             scene->forwardRenderingPipeline(scene->cameras[i]);
-
             // generate PPM file
             scene->writeImageToPPMFile(scene->cameras[i]);
 
