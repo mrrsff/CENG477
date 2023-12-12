@@ -17,3 +17,4 @@ class Line
 
 		Vec3 getPoint(double t);
 };
+#endif

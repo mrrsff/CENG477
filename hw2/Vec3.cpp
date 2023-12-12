@@ -49,6 +49,21 @@ double Vec3::getNthComponent(int n)
     }
 }
 
+Vec3 &Vec3::operator*(double scalar)
+{
+    this->x *= scalar;
+    this->y *= scalar;
+    this->z *= scalar;
+    return *this;
+}
+
+Vec3 &Vec3::operator+(const Vec3 &other)
+{
+    this->x += other.x;
+    this->y += other.y;
+    this->z += other.z;
+    return *this;
+}
 
 std::ostream &operator<<(std::ostream &os, const Vec3 &v)
 {

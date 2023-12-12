@@ -33,5 +33,5 @@ std::ostream &operator<<(std::ostream &os, const Line &l)
 
 Vec3 Line::getPoint(double t)
 {
-	return origin + t * direction;
+	return origin + direction * t;
 }

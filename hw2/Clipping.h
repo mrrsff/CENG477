@@ -3,9 +3,6 @@
 #include "Line.h"
 #include "Scene.h"
 
-class Clipping
-{
-	public:
-		static void liangBarsky(Scene& scene, Camera& camera, Line& line); // Line clipping
-		static void sutherlandHodgman(Scene& scene, Camera& camera, Mesh& mesh); // Polygon clipping
-};
+bool liangBarsky(Scene& scene, Camera& camera, Line& line); // Line clipping
+bool sutherlandHodgman(Scene& scene, Camera& camera, Mesh& mesh); // Polygon clipping
+#endif

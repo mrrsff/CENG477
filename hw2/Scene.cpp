@@ -392,7 +392,6 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 				default:
 					break;
 			}
-			cout << transformationMatrix << endl;
 			// Applying matrices to vertices
 			for(Triangle triangle : mesh->triangles){
 				Vec3* v1 = this->vertices[triangle.vertexIds[0] - 1];
@@ -423,10 +422,7 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 					v3Vec4TransformedCameraProjection = v3Vec4TransformedCameraProjection / v3Vec4TransformedCameraProjection.t;
 				}
 
-				Vec4 v1Vec4Transform
-				cout << "v1: " << v1Vec3TransformedCameraProjectionViewport << endl;
-				cout << "v2: " << v2Vec3TransformedCameraProjectionViewport << endl;
-				cout << "v3: " << v3Vec3TransformedCameraProjectionViewport << endl;edCameraProjectionViewport = v1Vec4TransformedCameraProjection * viewportTransformationMatrix;
+				Vec4 v1Vec4TransformedCameraProjectionViewport = v1Vec4TransformedCameraProjection * viewportTransformationMatrix;
 				Vec4 v2Vec4TransformedCameraProjectionViewport = v2Vec4TransformedCameraProjection * viewportTransformationMatrix;
 				Vec4 v3Vec4TransformedCameraProjectionViewport = v3Vec4TransformedCameraProjection * viewportTransformationMatrix;
 

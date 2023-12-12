@@ -62,6 +62,7 @@ std::ostream &operator<<(std::ostream &os, const Camera &c)
        << "\tu: " << c.u << " v: " << c.v << " w: " << c.w << std::endl
        << std::fixed << std::setprecision(3) << "\tleft: " << c.left << " right: " << c.right << " bottom: " << c.bottom << " top: " << c.top << std::endl
        << "\tnear: " << c.near << " far: " << c.far << " resolutions: " << c.horRes << "x" << c.verRes << " fileName: " << c.outputFilename;
+    return os;
 }
 
 Matrix4 Camera::getCameraTransformationMatrix()
@@ -97,8 +98,8 @@ Matrix4 Camera::getProjectionTransformationMatrix()
 Matrix4 Camera::getViewportTransformationMatrix()
 {
     double viewportValues[4][4] = {
-		{this->horRes / 2, 0, 0, (this->horRes - 1) / 2},
-		{0, this->verRes / 2, 0, (this->verRes - 1) / 2},
+		{(double) this->horRes / 2, 0, 0, ((double) this->horRes - 1) / 2},
+		{0, (double) this->verRes / 2, 0, ((double) this->verRes - 1) / 2},
 		{0, 0, 0.5, 0.5},
 		{0, 0, 0, 1}
 	};
