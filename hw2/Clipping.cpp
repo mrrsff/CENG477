@@ -1,16 +1,32 @@
 #include "Clipping.h"
 #include <iostream>
 
-bool visible(double p, double q, double &tE, double &tL) {
-    double t = q / p;
-    if (p < 0.0) {
-        if (t > tL) return false;
-        else if (t > tE) tE = t;
-    } else if (p > 0.0) {
-        if (t < tE) return false;
-        else if (t < tL) tL = t;
-    } else if (q < 0.0) return false;
-    return true;
+bool visible(double den, double num, double& tE, double& tL) // returns true if line is visible, false otherwise
+{
+	if (den == 0) // line is parallel to the clipping boundary
+	{
+		if (num < 0) // line is outside of the clipping boundary
+			return false;
+	}
+	else
+	{
+		double t = num / den;
+		if (den > 0) // line is entering the clipping boundary
+		{
+			if (t > tL) // line is outside of the clipping boundary
+				return false;
+			if (t > tE) // line is entering the clipping boundary
+				tE = t;
+		}
+		else // line is leaving the clipping boundary
+		{
+			if (t < tE) // line is outside of the clipping boundary
+				return false;
+			if (t < tL) // line is leaving the clipping boundary
+				tL = t;
+		}
+	}
+	return true;
 }
 
 bool liangBarsky(Line& line) // Line clipping in canonical view volume (CVV)
@@ -49,7 +65,7 @@ bool liangBarsky(Line& line) // Line clipping in canonical view volume (CVV)
 			line.p0.z = line.p0.z + tE * dz;
 			line.p0Color = line.p0Color + dc * tE;
 		}
-		return true; // line portion is visible and does not need to be clipped
+		return true; // line is visible
 	}
-	return false;
+	return false; // line is not visible
 }

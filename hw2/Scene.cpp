@@ -520,18 +520,11 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 				// Clip and draw each line
 				for (int i = 0; i < 3; ++i) {
 					if (liangBarsky(lines[i])) {
-						// If a line point is less than -1,-1,-1 or greater than 1,1,1, print the line
-						if (lines[i].p0.x < -1 || lines[i].p0.x > 1 || lines[i].p0.y < -1 || lines[i].p0.y > 1 || lines[i].p0.z < -1 || lines[i].p0.z > 1 ||
-							lines[i].p1.x < -1 || lines[i].p1.x > 1 || lines[i].p1.y < -1 || lines[i].p1.y > 1 || lines[i].p1.z < -1 || lines[i].p1.z > 1) {
-							cout << lines[i] << endl;
-						}
 						// Apply viewport transformation to the line coordinates before drawing
 						lines[i].applyTransformationMatrix(viewportTransformationMatrix);
 						rasterizeLine(&lines[i]);
 					}
 				}
-
-
 			}
 			else
 			{
