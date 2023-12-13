@@ -447,8 +447,37 @@ void Scene::rasterizeLine(Line* line)
 	}
 }
 
-void Scene::rasterizeTriangle(Vec4* v1, Vec4* v2, Vec4* v3, Color* c1, Color* c2, Color* c3)
+double calculateArea(Vec4 v1, Vec4 v2, Vec4 v3){
+	return abs((v1.x*(v2.y - v3.y) + v2.x*(v3.y - v1.y) + v3.x*(v1.y - v2.y)))/2;
+
+}
+
+void Scene::rasterizeTriangle(Vec4* v1, Vec4* v2, Vec4* v3)
 {
+	int xmin = min(min(v1->x, v2->x), v3->x);
+	int xmax = max(max(v1->x, v2->x), v3->x);
+	int ymin = min(min(v1->y, v2->y), v3->y);
+	int ymax = max(max(v1->y, v2->y), v3->y);
+	Color c1 = *this->colorsOfVertices[v1->colorId - 1];
+	Color c2 = *this->colorsOfVertices[v2->colorId - 1];
+	Color c3 = *this->colorsOfVertices[v3->colorId - 1];
+	for(int x = xmin; x <= xmax; x++){
+		for(int y = ymin; y <= ymax; y++){
+			Vec3 p = Vec3(x, y, 0, NO_COLOR);
+			double alpha = calculateArea(*v2, *v3, p);
+			double beta = calculateArea(*v3, *v1, p);
+			double gamma = calculateArea(*v1, *v2, p);
+			double area = calculateArea(*v1, *v2, *v3);
+			if(alpha + beta + gamma - area < EPSILON){
+				double z = (alpha * v1->z  + beta * v2->z + gamma * v3->z) / area;
+				if(this->depth[x][y] > z){
+					this->depth[x][y] = z;
+					Color c = c1 * alpha + c2 * beta + c3 * gamma;
+					assignColorToPixel(x, y, c);
+				}
+			}
+		}
+	}	
 }
 
 /*
@@ -529,9 +558,21 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 			else
 			{
 				// Solid rendering mode, just draw triangles
+				// Apply viewport transformation to the triangle coordinates before drawing
+				v1Vec4 = v1Vec4 * viewportTransformationMatrix;
+				v2Vec4 = v2Vec4 * viewportTransformationMatrix;
+				v3Vec4 = v3Vec4 * viewportTransformationMatrix;
 
-			}
+				v1Vec4 = v1Vec4 / v1Vec4.t;
+				v2Vec4 = v2Vec4 / v2Vec4.t;
+				v3Vec4 = v3Vec4 / v3Vec4.t;
 				
+				v1Vec4.colorId = v1->colorId;
+				v2Vec4.colorId = v2->colorId;
+				v3Vec4.colorId = v3->colorId;
+
+				rasterizeTriangle(&v1Vec4, &v2Vec4, &v3Vec4);
+			}
 		}
 	}
 }
