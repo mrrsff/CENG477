@@ -472,7 +472,7 @@ void Scene::rasterizeTriangle(Vec4* v1, Vec4* v2, Vec4* v3)
 				double z = (alpha * v1->z  + beta * v2->z + gamma * v3->z) / area;
 				if(this->depth[x][y] > z){
 					this->depth[x][y] = z;
-					Color c = c1 * alpha + c2 * beta + c3 * gamma;
+					Color c = (c1 * alpha + c2 * beta + c3 * gamma) / area;
 					assignColorToPixel(x, y, c);
 				}
 			}
