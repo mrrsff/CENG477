@@ -34,6 +34,9 @@ public:
 	int makeBetweenZeroAnd255(double value);
 	void writeImageToPPMFile(Camera *camera);
 	void convertPPMToPNG(std::string ppmFileName);
+	Matrix4 getModelingTransformationMatrix(Mesh* mesh);
+	void rasterizeLine(Line *line);
+	void rasterizeTriangle(Vec4 *v1, Vec4 *v2, Vec4 *v3, Color *c1, Color *c2, Color *c3);
 	void forwardRenderingPipeline(Camera *camera);
 };
 

@@ -10,6 +10,14 @@ public:
     Color();
     Color(double r, double g, double b);
     Color(const Color &other);
+
+    Color operator+(const Color &other);
+    Color operator-(const Color &other);
+    Color operator*(double scalar);
+    Color operator/(double scalar);
+    
+    Color round();
+
     friend std::ostream &operator<<(std::ostream &os, const Color &c);
 };
 

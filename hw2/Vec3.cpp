@@ -32,7 +32,6 @@ Vec3::Vec3(const Vec3 &other)
     this->z = other.z;
     this->colorId = other.colorId;
 }
-
 double Vec3::getNthComponent(int n)
 {
     switch (n)

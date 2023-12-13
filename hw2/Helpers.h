@@ -66,7 +66,7 @@ Matrix4 getIdentityMatrix();
 /*
  * Multiply matrices m1 (Matrix4) and m2 (Matrix4) and return the result matrix r (Matrix4).
  */
-Matrix4 multiplyMatrixWithMatrix(Matrix4 m1, Matrix4 m2);
+Matrix4 multiplyMatrixWithMatrix(Matrix4& m1, Matrix4& m2);
 
 /*
  * Multiply matrix m (Matrix4) with vector v (vec4) and store the result in vector r (vec4).

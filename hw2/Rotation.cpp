@@ -1,9 +1,11 @@
+#include <cmath>
 #include <iomanip>
 #include "Rotation.h"
 #include "Helpers.h"
 #include "Matrix4.h"
 #include "Vec3.h"
-#include <cmath>
+
+#define M_PI 3.14159265358979323846
 
 Rotation::Rotation() {
     this->rotationId = -1;
@@ -55,21 +57,21 @@ Matrix4 Rotation::getRotationMatrix()
     v = normalizeVec3(v);
     w = normalizeVec3(w);
     double m_val[4][4] = {{u.x, u.y, u.z, 0},
-                      {v.x, v.y, v.z, 0},
-                      {w.x, w.y, w.z, 0},
-                      {0, 0, 0, 1}};
+                          {v.x, v.y, v.z, 0},
+                          {w.x, w.y, w.z, 0},
+                          {0, 0, 0, 1}};
     Matrix4 m = Matrix4(m_val);
 
     Matrix4 mT = m.transpose();
     // Rotate around x by angle.
     double rot_val[4][4] = {{1, 0, 0, 0},
-                      {0, cos(this->angle), -sin(this->angle), 0},
-                      {0, sin(this->angle), cos(this->angle), 0},
+                      {0, cos(this->angle * M_PI / 180), -sin(this->angle * M_PI / 180), 0},
+                      {0, sin(this->angle * M_PI / 180), cos(this->angle * M_PI / 180), 0},
                       {0, 0, 0, 1}};
-    Matrix4 rotationMatrix = Matrix4(rot_val);
-    Matrix4 result = m * rotationMatrix;
-    result = result * mT;
-    return result;
+    Matrix4 rot = Matrix4(rot_val);
+    rot = rot * m;
+    Matrix4 result = mT * rot;
+    return mT * rot;
 
 }
 

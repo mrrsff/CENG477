@@ -342,18 +342,113 @@ void Scene::writeImageToPPMFile(Camera *camera)
 */
 void Scene::convertPPMToPNG(string ppmFileName)
 {
-	string command;
+	// string command;
 
 	// // TODO: Change implementation if necessary.
 	// command = "./magick convert " + ppmFileName + " " + ppmFileName + ".png";
 	// int res = system(command.c_str());
 }
 
-Vec3 applyTransformationMatrix(Vec3* vertex, Matrix4& transformationMatrix){
-	Vec4 vertexVec4(*vertex);
-	vertexVec4 = vertexVec4 * transformationMatrix;
+Matrix4 Scene::getModelingTransformationMatrix(Mesh* mesh)
+{
+	Matrix4 transformationMatrix = getIdentityMatrix();
+	// Calculating transformation matrix
+	for(int i = 0; i < mesh->numberOfTransformations ; i++){
+		switch(mesh->transformationTypes[i])
+		{
+			case 't':
+			{
+				Translation* translation = this->translations[mesh->transformationIds[i] - 1];
+				transformationMatrix = translation->getTranslationMatrix() * transformationMatrix;
+				break;
+			}
+			case 's':
+			{
+				Scaling* scaling = this->scalings[mesh->transformationIds[i] - 1];
+				transformationMatrix = scaling->getScalingMatrix() * transformationMatrix;
+				break;
+			}
+			case 'r':
+			{
+				Rotation* rotation = this->rotations[mesh->transformationIds[i] - 1];
+				transformationMatrix = rotation->getRotationMatrix() * transformationMatrix;
+				break;
+			}
+			default:
+				break;
+		}
+	}
+	return transformationMatrix;
+}
+
+bool isBackfaceCulled (Camera* cam, Vec3 v1, Vec3 v2, Vec3 v3){
+	Vec3 v1v2 = v2 - v1;
+	Vec3 v1v3 = v3 - v1;
+	Vec3 normal = crossProductVec3(v1v2, v1v3);
+	Vec3 gaze = cam->gaze;
+	double dotProduct = dotProductVec3(normal, gaze);
+	if(dotProduct > 0){
+		return true;
+	}
+	return false;
+
+}
+
+Vec3 applyTransformationMatrix(Vec3 vertex, Matrix4& transformationMatrix)
+{
+	Vec4 vertexVec4 = Vec4(vertex.x, vertex.y, vertex.z, 1, vertex.colorId);
+	vertexVec4 = multiplyMatrixWithVec4(transformationMatrix, vertexVec4);
+	vertexVec4 = vertexVec4 / vertexVec4.t;
 	Vec3 vertexVec3 = Vec3(vertexVec4.x, vertexVec4.y, vertexVec4.z, vertexVec4.colorId);
 	return vertexVec3;
+}
+
+void Scene::rasterizeLine(Line* line)
+{
+	int x0 = line->p0.x;
+	int y0 = line->p0.y;
+	int x1 = line->p1.x;
+	int y1 = line->p1.y;
+	Color c0 = line->p0Color;
+	Color c1 = line->p1Color; 
+	int dx = abs(x1 - x0); // abs(dx) >= abs(dy)
+	int dy = abs(y1 - y0); // abs(dy) <= abs(dx)
+	int sx = (x0 < x1) ? 1 : -1; // sign of x-step
+	int sy = (y0 < y1) ? 1 : -1; // sign of y-step
+	int err = dx - dy; // error value e_xy
+	int x = x0;
+	int y = y0;
+	Color c = c0;
+	while (true)
+	{
+		// Check for z-buffer
+		if (this->depth[x][y] > line->p0.z)
+		{
+			this->depth[x][y] = line->p0.z;
+			assignColorToPixel(x, y, c);
+		}
+
+		if (x == x1 && y == y1) break; // Reached the end
+		
+		int e2 = 2 * err;
+		if (e2 > -dy)
+		{
+			err -= dy;
+			x += sx;
+		}
+		if (e2 < dx)
+		{
+			err += dx;
+			y += sy;
+		}
+		// Calculate color interpolation using y-coordinate
+		double t = (double)(y - y0) / (double)(y1 - y0);
+		c = c0 + (c1 - c0) * t;
+	}
+}
+
+void Scene::rasterizeTriangle(Vec4* v1, Vec4* v2, Vec4* v3, Color* c1, Color* c2, Color* c3)
+{
 }
 
 /*
@@ -368,65 +463,82 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 
 	// Projection Transformation Matrix
 	Matrix4 projectionTransformationMatrix = camera->getProjectionTransformationMatrix();	
-
 	// Viewport Transformation Matrix
 	// TODO: xmin, ymin
 	Matrix4 viewportTransformationMatrix = camera->getViewportTransformationMatrix();
 
 	for(Mesh* mesh : this->meshes){
-		Matrix4 transformationMatrix = getIdentityMatrix();
-		for(int i = 0; i < mesh->numberOfTransformations ; i++){
+		Matrix4 modelingTransformationMatrix = getModelingTransformationMatrix(mesh);
+		Matrix4 transformationMatrix = multiplyMatrixWithMatrix(cameraTransformationMatrix, modelingTransformationMatrix); // camera * modeling 
+		transformationMatrix = multiplyMatrixWithMatrix(projectionTransformationMatrix, transformationMatrix); // projection * camera * modeling
+		/*
+			For each triangle we need to do these steps:
+			1. Apply modeling transformation matrix
+			2. Apply camera transformation matrix
+			3. Apply projection transformation matrix
+			4. Clip
+			5. Cull
+			6. Apply viewport transformation matrix
+			7. Rasterize
+		*/
+		for(Triangle triangle : mesh->triangles){
+			Vec3* v1 = this->vertices[triangle.vertexIds[0] - 1];
+			Vec3* v2 = this->vertices[triangle.vertexIds[1] - 1];
+			Vec3* v3 = this->vertices[triangle.vertexIds[2] - 1];
+			Color* c1 = this->colorsOfVertices[triangle.vertexIds[0] - 1];
+			Color* c2 = this->colorsOfVertices[triangle.vertexIds[1] - 1];
+			Color* c3 = this->colorsOfVertices[triangle.vertexIds[2] - 1];
 
-			switch(mesh->transformationTypes[i])
+			Vec4 v1Vec4 = applyTransformationMatrix(*v1, transformationMatrix);
+			Vec4 v2Vec4 = applyTransformationMatrix(*v2, transformationMatrix);
+			Vec4 v3Vec4 = applyTransformationMatrix(*v3, transformationMatrix);
+
+			v1Vec4 = v1Vec4 / v1Vec4.t;
+			v2Vec4 = v2Vec4 / v2Vec4.t;
+			v3Vec4 = v3Vec4 / v3Vec4.t;
+
+			Vec3 v1Vec3 = Vec3(v1Vec4.x, v1Vec4.y, v1Vec4.z, v1Vec4.colorId);
+			Vec3 v2Vec3 = Vec3(v2Vec4.x, v2Vec4.y, v2Vec4.z, v2Vec4.colorId);
+			Vec3 v3Vec3 = Vec3(v3Vec4.x, v3Vec4.y, v3Vec4.z, v3Vec4.colorId);
+
+
+			if (this->cullingEnabled && isBackfaceCulled(camera, v1Vec3, v2Vec3, v3Vec3))
 			{
-				case 't':
-				{
-					Translation* translation = this->translations[mesh->transformationIds[i] - 1];
-					transformationMatrix = transformationMatrix * translation->getTranslationMatrix();
-					break;
-				}
-				case 's':
-				{
-					Scaling* scaling = this->scalings[mesh->transformationIds[i] - 1];
-					transformationMatrix = transformationMatrix * scaling->getScalingMatrix();
-					break;
-				}
-				case 'r':
-				{
-					Rotation* rotation = this->rotations[mesh->transformationIds[i] - 1];
-					transformationMatrix = transformationMatrix * rotation->getRotationMatrix();
-					break;
-				}
-				default:
-					break;
+				continue;
 			}
-			// Combine all transformations
-			Matrix4 combinedTransformationMatrix = cameraTransformationMatrix * transformationMatrix * projectionTransformationMatrix * viewportTransformationMatrix;
 
-			// Applying matrices to vertices
-			for(Triangle triangle : mesh->triangles){
-				Vec3* v1 = this->vertices[triangle.vertexIds[0] - 1];
-				Vec3* v2 = this->vertices[triangle.vertexIds[1] - 1];
-				Vec3* v3 = this->vertices[triangle.vertexIds[2] - 1];
+			if (mesh->type == WIREFRAME_MESH)
+			{
+				// Wireframe rendering mode, use line clipping and draw lines
+				// Generate lines for each triangle
+				Line lines[3] = {
+					Line(v1Vec3, v2Vec3, *c1, *c2),
+					Line(v2Vec3, v3Vec3, *c2, *c3),
+					Line(v3Vec3, v1Vec3, *c3, *c1)
+				};
 
-				Vec4 v1Vec4 = applyTransformationMatrix(v1, combinedTransformationMatrix);
-				Vec4 v2Vec4 = applyTransformationMatrix(v2, combinedTransformationMatrix);
-				Vec4 v3Vec4 = applyTransformationMatrix(v3, combinedTransformationMatrix);
-
-				Vec3 v1Vec3 = Vec3(v1Vec4.x, v1Vec4.y, v1Vec4.z, v1Vec4.colorId);
-				Vec3 v2Vec3 = Vec3(v2Vec4.x, v2Vec4.y, v2Vec4.z, v2Vec4.colorId);
-				Vec3 v3Vec3 = Vec3(v3Vec4.x, v3Vec4.y, v3Vec4.z, v3Vec4.colorId);
-
-				// Clipping
-				Line line1 = Line(v1Vec3, v2Vec3);
-				Line line2 = Line(v2Vec3, v3Vec3);
-				Line line3 = Line(v3Vec3, v1Vec3);
-
-				if(!liangBarsky(*this, *camera, line1) || !liangBarsky(*this, *camera, line2) || !liangBarsky(*this, *camera, line3)){
-					continue; 
+				// Clip and draw each line
+				for (int i = 0; i < 3; ++i) {
+					if (liangBarsky(lines[i])) {
+						// If a line point is less than -1,-1,-1 or greater than 1,1,1, print the line
+						if (lines[i].p0.x < -1 || lines[i].p0.x > 1 || lines[i].p0.y < -1 || lines[i].p0.y > 1 || lines[i].p0.z < -1 || lines[i].p0.z > 1 ||
+							lines[i].p1.x < -1 || lines[i].p1.x > 1 || lines[i].p1.y < -1 || lines[i].p1.y > 1 || lines[i].p1.z < -1 || lines[i].p1.z > 1) {
+							cout << lines[i] << endl;
+						}
+						// Apply viewport transformation to the line coordinates before drawing
+						lines[i].applyTransformationMatrix(viewportTransformationMatrix);
+						rasterizeLine(&lines[i]);
+					}
 				}
+
+
+			}
+			else
+			{
+				// Solid rendering mode, just draw triangles
+
+			}
 				
-			}
 		}
 	}
 }
