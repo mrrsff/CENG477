@@ -382,25 +382,9 @@ Matrix4 Scene::getModelingTransformationMatrix(Mesh* mesh)
 }
 
 bool isBackfaceCulled (Camera* cam, Vec3 v1, Vec3 v2, Vec3 v3){
-	Vec3 v1v2 = v2 - v1;
-	Vec3 v1v3 = v3 - v1;
-	Vec3 normal = crossProductVec3(v1v2, v1v3);
-	Vec3 gaze = cam->gaze;
-	double dotProduct = dotProductVec3(normal, gaze);
-	if(dotProduct > 0){
-		return true;
-	}
-	return false;
-
-}
-
-Vec3 applyTransformationMatrix(Vec3 vertex, Matrix4& transformationMatrix)
-{
-	Vec4 vertexVec4 = Vec4(vertex.x, vertex.y, vertex.z, 1, vertex.colorId);
-	vertexVec4 = multiplyMatrixWithVec4(transformationMatrix, vertexVec4);
-	vertexVec4 = vertexVec4 / vertexVec4.t;
-	Vec3 vertexVec3 = Vec3(vertexVec4.x, vertexVec4.y, vertexVec4.z, vertexVec4.colorId);
-	return vertexVec3;
+	Vec3 n = crossProductVec3(v2 - v1, v3 - v1); // normal vector of the triangle
+	Vec3 v = cam->position - v1; // view vector
+	return dotProductVec3(n, v) < 0; // if the angle between normal vector and view vector is greater than 90 degrees, then the triangle is backface culled
 }
 
 void Scene::rasterizeLine(Line* line)
@@ -449,7 +433,6 @@ void Scene::rasterizeLine(Line* line)
 
 double calculateArea(Vec4 v1, Vec4 v2, Vec4 v3){
 	return abs((v1.x*(v2.y - v3.y) + v2.x*(v3.y - v1.y) + v3.x*(v1.y - v2.y)))/2;
-
 }
 
 void Scene::rasterizeTriangle(Vec4* v1, Vec4* v2, Vec4* v3)
@@ -458,9 +441,11 @@ void Scene::rasterizeTriangle(Vec4* v1, Vec4* v2, Vec4* v3)
 	int xmax = max(max(v1->x, v2->x), v3->x);
 	int ymin = min(min(v1->y, v2->y), v3->y);
 	int ymax = max(max(v1->y, v2->y), v3->y);
+
 	Color c1 = *this->colorsOfVertices[v1->colorId - 1];
 	Color c2 = *this->colorsOfVertices[v2->colorId - 1];
 	Color c3 = *this->colorsOfVertices[v3->colorId - 1];
+	
 	for(int x = xmin; x <= xmax; x++){
 		for(int y = ymin; y <= ymax; y++){
 			Vec3 p = Vec3(x, y, 0, NO_COLOR);
@@ -470,6 +455,10 @@ void Scene::rasterizeTriangle(Vec4* v1, Vec4* v2, Vec4* v3)
 			double area = calculateArea(*v1, *v2, *v3);
 			if(alpha + beta + gamma - area < EPSILON){
 				double z = (alpha * v1->z  + beta * v2->z + gamma * v3->z) / area;
+				// Check if out of bounds 
+				if (x < 0 || x >= this->image.size() || y < 0 || y >= this->image[0].size()) continue;
+
+				// Check for z-buffer
 				if(this->depth[x][y] > z){
 					this->depth[x][y] = z;
 					Color c = (c1 * alpha + c2 * beta + c3 * gamma) / area;
@@ -518,13 +507,20 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 			Color* c2 = this->colorsOfVertices[triangle.vertexIds[1] - 1];
 			Color* c3 = this->colorsOfVertices[triangle.vertexIds[2] - 1];
 
-			Vec4 v1Vec4 = applyTransformationMatrix(*v1, transformationMatrix);
-			Vec4 v2Vec4 = applyTransformationMatrix(*v2, transformationMatrix);
-			Vec4 v3Vec4 = applyTransformationMatrix(*v3, transformationMatrix);
+			Vec4 v1Vec4 = Vec4(v1->x, v1->y, v1->z, 1, v1->colorId);
+			Vec4 v2Vec4 = Vec4(v2->x, v2->y, v2->z, 1, v2->colorId);
+			Vec4 v3Vec4 = Vec4(v3->x, v3->y, v3->z, 1, v3->colorId);
 
-			v1Vec4 = v1Vec4 / v1Vec4.t;
-			v2Vec4 = v2Vec4 / v2Vec4.t;
-			v3Vec4 = v3Vec4 / v3Vec4.t;
+			v1Vec4 = multiplyMatrixWithVec4(transformationMatrix, v1Vec4);
+			v2Vec4 = multiplyMatrixWithVec4(transformationMatrix, v2Vec4);
+			v3Vec4 = multiplyMatrixWithVec4(transformationMatrix, v3Vec4);
+
+			// If perspective projection, divide by t
+			if(camera->projectionType == PERSPECTIVE_PROJECTION){
+				v1Vec4 = v1Vec4 / v1Vec4.t;
+				v2Vec4 = v2Vec4 / v2Vec4.t;
+				v3Vec4 = v3Vec4 / v3Vec4.t;
+			}
 
 			Vec3 v1Vec3 = Vec3(v1Vec4.x, v1Vec4.y, v1Vec4.z, v1Vec4.colorId);
 			Vec3 v2Vec3 = Vec3(v2Vec4.x, v2Vec4.y, v2Vec4.z, v2Vec4.colorId);

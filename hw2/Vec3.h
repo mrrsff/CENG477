@@ -19,6 +19,7 @@ public:
     Vec3 &operator*(double scalar);
     Vec3 &operator+(const Vec3 &other);
     Vec3 &operator-(const Vec3 &other);
+    Vec3 &operator/(double scalar);
 
     friend std::ostream &operator<<(std::ostream &os, const Vec3 &v);
 };
