@@ -24,12 +24,12 @@ Scaling::Scaling(int scalingId, double sx, double sy, double sz)
 }
 Matrix4 Scaling::getScalingMatrix()
 {
-    Matrix4 scalingMatrix = getIdentityMatrix();
-    scalingMatrix.values[0][0] = sx;
-    scalingMatrix.values[1][1] = sy;
-    scalingMatrix.values[2][2] = sz;
+    double m_val[4][4] = {{sx, 0, 0, 0},
+                          {0, sy, 0, 0},
+                          {0, 0, sz, 0},
+                          {0, 0, 0, 1}};
 
-    return scalingMatrix;
+    return Matrix4(m_val);
 }
 
 std::ostream &operator<<(std::ostream &os, const Scaling &s)

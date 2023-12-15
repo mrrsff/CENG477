@@ -23,6 +23,7 @@ public:
 
     Vec4 operator/(double d);
     Vec4 operator*(Matrix4& m);
+    Vec4 operator-(Vec4& v);
 };
 
 #endif

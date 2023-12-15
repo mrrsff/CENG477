@@ -92,3 +92,8 @@ Vec4 Vec4::operator*(Matrix4& m)
     }
     return Vec4(result[0], result[1], result[2], result[3], this->colorId);
 }
+
+Vec4 Vec4::operator-(Vec4& v)
+{
+    return Vec4(this->x - v.x, this->y - v.y, this->z - v.z, this->t - v.t, this->colorId);
+}

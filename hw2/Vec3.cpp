@@ -48,7 +48,7 @@ double Vec3::getNthComponent(int n)
     }
 }
 
-Vec3 &Vec3::operator*(double scalar)
+Vec3 Vec3::operator*(double scalar)
 {
     this->x *= scalar;
     this->y *= scalar;
@@ -56,21 +56,21 @@ Vec3 &Vec3::operator*(double scalar)
     return *this;
 }
 
-Vec3 &Vec3::operator+(const Vec3 &other)
+Vec3 Vec3::operator+(const Vec3 &other)
 {
     this->x += other.x;
     this->y += other.y;
     this->z += other.z;
     return *this;
 }
-Vec3 &Vec3::operator-(const Vec3 &other)
+Vec3 Vec3::operator-(const Vec3 &other)
 {
     this->x -= other.x;
     this->y -= other.y;
     this->z -= other.z;
     return *this;
 }
-Vec3 &Vec3::operator/(double scalar)
+Vec3 Vec3::operator/(double scalar)
 {
     this->x /= scalar;
     this->y /= scalar;

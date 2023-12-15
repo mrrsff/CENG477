@@ -38,14 +38,12 @@ Matrix4 Rotation::getRotationMatrix()
     */
     Vec3 u = Vec3(this->ux, this->uy, this->uz);
     Vec3 v, w;
-    double absUx = std::abs(u.x);
-    double absUy = std::abs(u.y);
-    double absUz = std::abs(u.z);
-    if (absUx <= absUy && absUx <= absUz)
+    double minimum = std::min(std::abs(u.x), std::min(std::abs(u.y), std::abs(u.z)));
+    if (minimum == std::abs(u.x))
     {
         v = Vec3(0, -u.z, u.y);
     }
-    else if (absUy <= absUx && absUy <= absUz)
+    else if (minimum == std::abs(u.y))
     {
         v = Vec3(-u.z, 0, u.x);
     }
@@ -62,17 +60,19 @@ Matrix4 Rotation::getRotationMatrix()
                           {0, 0, 0, 1}};
     Matrix4 m = Matrix4(m_val);
 
-    Matrix4 mT = m.transpose();
+    double m_val_inversed[4][4] = {{u.x, v.x, w.x, 0},
+                                   {u.y, v.y, w.y, 0},
+                                   {u.z, v.z, w.z, 0},
+                                   {0, 0, 0, 1}};
+    Matrix4 mT = Matrix4(m_val_inversed);
     // Rotate around x by angle.
     double rot_val[4][4] = {{1, 0, 0, 0},
                       {0, cos(this->angle * M_PI / 180), -sin(this->angle * M_PI / 180), 0},
                       {0, sin(this->angle * M_PI / 180), cos(this->angle * M_PI / 180), 0},
                       {0, 0, 0, 1}};
     Matrix4 rot = Matrix4(rot_val);
-    rot = rot * m;
-    Matrix4 result = mT * rot;
-    return mT * rot;
-
+    Matrix4 result = mT * rot * m;
+    return result;
 }
 
 std::ostream &operator<<(std::ostream &os, const Rotation &r)

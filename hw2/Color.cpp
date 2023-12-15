@@ -40,6 +40,14 @@ Color Color::operator/(double scalar)
 {
     return Color(this->r / scalar, this->g / scalar, this->b / scalar);
 }
+double clamp(double value, double min, double max)
+{
+    if (value < min)
+        return min;
+    if (value > max)
+        return max;
+    return value;
+}
 
 Color Color::round()
 {
@@ -47,6 +55,9 @@ Color Color::round()
     newColor.r = (int)(this->r + 0.5);
     newColor.g = (int)(this->g + 0.5);
     newColor.b = (int)(this->b + 0.5);
+    newColor.r = clamp(newColor.r, 0, 255);
+    newColor.g = clamp(newColor.g, 0, 255);
+    newColor.b = clamp(newColor.b, 0, 255);
     return newColor;
 }
 
