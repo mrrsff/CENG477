@@ -37,12 +37,12 @@ void Line::applyTransformationMatrix(Matrix4& transformationMatrix)
 {
 	Vec4 p0Vec4 = Vec4(p0.x, p0.y, p0.z, 1);
 	Vec4 p1Vec4 = Vec4(p1.x, p1.y, p1.z, 1);
-	p0Vec4 = p0Vec4 * transformationMatrix;
-	p1Vec4 = p1Vec4 * transformationMatrix;
+	p0Vec4 = multiplyMatrixWithVec4(transformationMatrix, p0Vec4);
+	p1Vec4 = multiplyMatrixWithVec4(transformationMatrix, p1Vec4);
 	p0Vec4 = p0Vec4 / p0Vec4.t;
 	p1Vec4 = p1Vec4 / p1Vec4.t;
-	p0 = Vec3(p0Vec4.x, p0Vec4.y, p0Vec4.z, p0.colorId);
-	p1 = Vec3(p1Vec4.x, p1Vec4.y, p1Vec4.z, p1.colorId);
+	this->p0 = Vec3(p0Vec4.x, p0Vec4.y, p0Vec4.z, p0.colorId);
+	this->p1 = Vec3(p1Vec4.x, p1Vec4.y, p1Vec4.z, p1.colorId);
 }
 
 std::ostream &operator<<(std::ostream &os, const Line &l)

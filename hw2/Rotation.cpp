@@ -47,7 +47,7 @@ Matrix4 Rotation::getRotationMatrix()
     {
         v = Vec3(-u.z, 0, u.x);
     }
-    else
+    else if (minimum == std::abs(u.z))
     {
         v = Vec3(-u.y, u.x, 0);
     }
@@ -67,7 +67,7 @@ Matrix4 Rotation::getRotationMatrix()
     Matrix4 mT = Matrix4(m_val_inversed);
     // Rotate around x by angle.
     double rot_val[4][4] = {{1, 0, 0, 0},
-                      {0, cos(this->angle * M_PI / 180), -sin(this->angle * M_PI / 180), 0},
+                      {0, cos(this->angle * M_PI / 180), (-1) * sin(this->angle * M_PI / 180), 0},
                       {0, sin(this->angle * M_PI / 180), cos(this->angle * M_PI / 180), 0},
                       {0, 0, 0, 1}};
     Matrix4 rot = Matrix4(rot_val);

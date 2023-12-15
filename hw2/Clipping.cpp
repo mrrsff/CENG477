@@ -3,30 +3,24 @@
 
 bool visible(double den, double num, double& tE, double& tL) // returns true if line is visible, false otherwise
 {
-	if (den == 0) // line is parallel to the clipping boundary
+	double t = num / den;
+	if (den > 0) // line is entering the clipping boundary
 	{
-		if (num < 0) // line is outside of the clipping boundary
+		if (t > tL) // line is outside of the clipping boundary
 			return false;
+		if (t > tE) // line is entering the clipping boundary
+			tE = t;
 	}
-	else
+	else if (den < 0) // line is leaving the clipping boundary
 	{
-		double t = num / den;
-		if (den > 0) // line is entering the clipping boundary
-		{
-			if (t > tL) // line is outside of the clipping boundary
-				return false;
-			if (t > tE) // line is entering the clipping boundary
-				tE = t;
-		}
-		else // line is leaving the clipping boundary
-		{
-			if (t < tE) // line is outside of the clipping boundary
-				return false;
-			if (t < tL) // line is leaving the clipping boundary
-				tL = t;
-		}
+		if (t < tE) // line is outside of the clipping boundary
+			return false;
+		if (t < tL) // line is leaving the clipping boundary
+			tL = t;
 	}
-	return true;
+	else if (num > 0) // line is parallel to the clipping boundary and is outside of the clipping boundary
+		return false;
+	return true; // line is visible
 }
 
 bool liangBarsky(Line& line) // Line clipping in canonical view volume (CVV)

@@ -1,6 +1,7 @@
 #ifndef _LINE_H_
 #define _LINE_H_
 #include "Vec3.h"
+#include "Helpers.h"
 #include "Color.h"
 #include "Matrix4.h"
 #include <iostream>

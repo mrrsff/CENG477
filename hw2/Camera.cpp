@@ -88,7 +88,7 @@ Matrix4 Camera::getProjectionTransformationMatrix()
 		double projectionValues[4][4] = {
 			{2 * this->near / (this->right - this->left), 0, (this->right + this->left) / (this->right - this->left), 0},
 			{0, 2 * this->near / (this->top - this->bottom), (this->top + this->bottom) / (this->top - this->bottom), 0},
-			{0, 0, -(this->near + this->far) / (this->near - this->far), -2 * this->near * this->far / (this->far - this->near)},
+			{0, 0, -(this->far + this->near) / (this->far - this->near), -2 * this->far * this->near / (this->far - this->near)},
 			{0, 0, -1, 0}
 		};
 		return Matrix4(projectionValues);

@@ -372,7 +372,8 @@ Matrix4 Scene::getModelingTransformationMatrix(Mesh* mesh)
 			case 'r':
 			{
 				Rotation* rotation = this->rotations[mesh->transformationIds[i] - 1];
-				transformationMatrix = rotation->getRotationMatrix() * transformationMatrix;
+				Matrix4 rot = rotation->getRotationMatrix();
+				transformationMatrix = rot * transformationMatrix;
 				break;
 			}
 			default:
@@ -390,7 +391,7 @@ bool isBackfaceCulled(Vec4 & v0, Vec4 & v1, Vec4 & v2) {
     Vec3 edge02 = subtractVec3(v_2, v_0);
     Vec3 normalVector = normalizeVec3(crossProductVec3(edge01, edge02));
     double res = dotProductVec3(normalVector, v_0); // View Vector = v_0 - origin
-    return !(res < 0);
+    return (res < 0);
 }
 
 void Scene::rasterizeLine(Line* line)
@@ -495,14 +496,14 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 			1. Apply modeling transformation matrix
 			2. Apply camera transformation matrix
 			3. Apply projection transformation matrix
-			4. Clip
-			5. Cull
+			4. Cull
+			5. Clip
 			6. Apply viewport transformation matrix
 			7. Rasterize
 		*/
-		Matrix4 modelingTransformationMatrix = getModelingTransformationMatrix(mesh);
-		Matrix4 camera_modeling_transformationMatrix = multiplyMatrixWithMatrix(cameraTransformationMatrix, modelingTransformationMatrix);
-		Matrix4 proj_camera_modeling_transformationMatrix = multiplyMatrixWithMatrix(projectionTransformationMatrix, camera_modeling_transformationMatrix);
+		Matrix4 model_tM = getModelingTransformationMatrix(mesh);
+		Matrix4 cam_model_tM = multiplyMatrixWithMatrix(cameraTransformationMatrix, model_tM);
+		Matrix4 proj_cam_model_tM = multiplyMatrixWithMatrix(projectionTransformationMatrix, cam_model_tM);
 
 		for(Triangle triangle : mesh->triangles){
 			Vec3* v1 = this->vertices[triangle.vertexIds[0] - 1];
@@ -518,9 +519,9 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 			Vec4 v3Vec4 = Vec4(v3->x, v3->y, v3->z, 1, v3->colorId);
 
 			// Apply camera transformation matrix
-			v1Vec4 = multiplyMatrixWithVec4(proj_camera_modeling_transformationMatrix, v1Vec4);
-			v2Vec4 = multiplyMatrixWithVec4(proj_camera_modeling_transformationMatrix, v2Vec4);
-			v3Vec4 = multiplyMatrixWithVec4(proj_camera_modeling_transformationMatrix, v3Vec4);
+			v1Vec4 = multiplyMatrixWithVec4(proj_cam_model_tM, v1Vec4);
+			v2Vec4 = multiplyMatrixWithVec4(proj_cam_model_tM, v2Vec4);
+			v3Vec4 = multiplyMatrixWithVec4(proj_cam_model_tM, v3Vec4);
 
 			if (this->cullingEnabled && isBackfaceCulled(v1Vec4, v2Vec4, v3Vec4))
 			{
@@ -535,7 +536,6 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 			Vec3 v1Vec3 = Vec3(v1Vec4.x, v1Vec4.y, v1Vec4.z, v1Vec4.colorId);
 			Vec3 v2Vec3 = Vec3(v2Vec4.x, v2Vec4.y, v2Vec4.z, v2Vec4.colorId);
 			Vec3 v3Vec3 = Vec3(v3Vec4.x, v3Vec4.y, v3Vec4.z, v3Vec4.colorId);
-			
 
 			if (mesh->type == WIREFRAME_MESH)
 			{
@@ -554,7 +554,6 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 						lines[i].applyTransformationMatrix(viewportTransformationMatrix);
 						rasterizeLine(&lines[i]);
 					}
-					else cout << lines[i] << endl;
 				}
 			}
 			else
