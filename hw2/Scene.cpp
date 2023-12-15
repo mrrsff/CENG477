@@ -254,6 +254,7 @@ Scene::Scene(const char *xmlPath)
 
 void Scene::assignColorToPixel(int i, int j, Color c)
 {
+	c = c.round();
 	this->image[i][j].r = c.r;
 	this->image[i][j].g = c.g;
 	this->image[i][j].b = c.b;
@@ -381,10 +382,15 @@ Matrix4 Scene::getModelingTransformationMatrix(Mesh* mesh)
 	return transformationMatrix;
 }
 
-bool isBackfaceCulled (Camera* cam, Vec3 v1, Vec3 v2, Vec3 v3){
-	Vec3 n = crossProductVec3(v2 - v1, v3 - v1); // normal vector of the triangle
-	Vec3 v = cam->position - v1; // view vector
-	return dotProductVec3(n, v) < 0; // if the angle between normal vector and view vector is greater than 90 degrees, then the triangle is backface culled
+bool isBackfaceCulled(Vec4 & v0, Vec4 & v1, Vec4 & v2) {
+    Vec3 v_0 = Vec3(v0.x, v0.y, v0.z, v0.colorId);
+    Vec3 v_1 = Vec3(v1.x, v1.y, v1.z, v1.colorId);
+    Vec3 v_2 = Vec3(v2.x, v2.y, v2.z, v2.colorId);
+    Vec3 edge01 = subtractVec3(v_1, v_0);
+    Vec3 edge02 = subtractVec3(v_2, v_0);
+    Vec3 normalVector = normalizeVec3(crossProductVec3(edge01, edge02));
+    double res = dotProductVec3(normalVector, v_0); // View Vector = v_0 - origin
+    return !(res < 0);
 }
 
 void Scene::rasterizeLine(Line* line)
@@ -431,42 +437,47 @@ void Scene::rasterizeLine(Line* line)
 	}
 }
 
-double calculateArea(Vec4 v1, Vec4 v2, Vec4 v3){
-	return abs((v1.x*(v2.y - v3.y) + v2.x*(v3.y - v1.y) + v3.x*(v1.y - v2.y)))/2;
+// Calculates barycentric coordinates of a triangle with cramers rule
+void barycentricCoordinates(Vec4 p, Vec4 v1, Vec4 v2, Vec4 v3, double& alpha, double& beta, double& gamma){
+	double detA = (v1.x - v3.x) * (v2.y - v3.y) - (v2.x - v3.x) * (v1.y - v3.y);
+	double detA1 = (p.x - v3.x) * (v2.y - v3.y) - (v2.x - v3.x) * (p.y - v3.y);
+	double detA2 = (v1.x - v3.x) * (p.y - v3.y) - (p.x - v3.x) * (v1.y - v3.y);
+	alpha = detA1 / detA;
+	beta = detA2 / detA;
+	gamma = 1 - alpha - beta;
 }
-
 void Scene::rasterizeTriangle(Vec4* v1, Vec4* v2, Vec4* v3)
 {
-	int xmin = min(min(v1->x, v2->x), v3->x);
-	int xmax = max(max(v1->x, v2->x), v3->x);
-	int ymin = min(min(v1->y, v2->y), v3->y);
-	int ymax = max(max(v1->y, v2->y), v3->y);
+	// Set min and max values for x and y. Also check for boundaries.
+	int xmin = max(min(v1->x, min(v2->x, v3->x)), 0.0);
+	int xmax = min(max(v1->x, max(v2->x, v3->x)), (double)this->cameras[0]->horRes - 1);
+	int ymin = max(min(v1->y, min(v2->y, v3->y)), 0.0);
+	int ymax = min(max(v1->y, max(v2->y, v3->y)), (double)this->cameras[0]->verRes - 1);
 
-	Color c1 = *this->colorsOfVertices[v1->colorId - 1];
-	Color c2 = *this->colorsOfVertices[v2->colorId - 1];
-	Color c3 = *this->colorsOfVertices[v3->colorId - 1];
-	
+	Color *c1 = this->colorsOfVertices[v1->colorId - 1];
+	Color *c2 = this->colorsOfVertices[v2->colorId - 1];
+	Color *c3 = this->colorsOfVertices[v3->colorId - 1];
+	Color c;
+
+	// Calculate barycentric coordinates
+	double alpha, beta, gamma;
 	for(int x = xmin; x <= xmax; x++){
 		for(int y = ymin; y <= ymax; y++){
-			Vec3 p = Vec3(x, y, 0, NO_COLOR);
-			double alpha = calculateArea(*v2, *v3, p);
-			double beta = calculateArea(*v3, *v1, p);
-			double gamma = calculateArea(*v1, *v2, p);
-			double area = calculateArea(*v1, *v2, *v3);
-			if(alpha + beta + gamma - area < EPSILON){
-				double z = (alpha * v1->z  + beta * v2->z + gamma * v3->z) / area;
-				// Check if out of bounds 
-				if (x < 0 || x >= this->image.size() || y < 0 || y >= this->image[0].size()) continue;
-
+			Vec4 p = Vec4(x, y, 0, NO_COLOR);
+			barycentricCoordinates(p, *v1, *v2, *v3, alpha, beta, gamma);
+			if(alpha >= 0 && beta >= 0 && gamma >= 0){
+				// Calculate linear interpolation with respect to barycentric coordinates
+				double z = v1->z * alpha + v2->z * beta + v3->z * gamma;
 				// Check for z-buffer
-				if(this->depth[x][y] > z){
+				if (this->depth[x][y] > z)
+				{
+					c = *c1 * alpha + *c2 * beta + *c3 * gamma;
 					this->depth[x][y] = z;
-					Color c = (c1 * alpha + c2 * beta + c3 * gamma) / area;
 					assignColorToPixel(x, y, c);
 				}
 			}
 		}
-	}	
+	}
 }
 
 /*
@@ -474,21 +485,11 @@ void Scene::rasterizeTriangle(Vec4* v1, Vec4* v2, Vec4* v3)
 */
 void Scene::forwardRenderingPipeline(Camera *camera)
 {
-	// TODO: Implement this function
-
-	// Camera Transformation Matrix
 	Matrix4 cameraTransformationMatrix = camera->getCameraTransformationMatrix();
-
-	// Projection Transformation Matrix
-	Matrix4 projectionTransformationMatrix = camera->getProjectionTransformationMatrix();	
-	// Viewport Transformation Matrix
-	// TODO: xmin, ymin
+	Matrix4 projectionTransformationMatrix = camera->getProjectionTransformationMatrix();
 	Matrix4 viewportTransformationMatrix = camera->getViewportTransformationMatrix();
 
 	for(Mesh* mesh : this->meshes){
-		Matrix4 modelingTransformationMatrix = getModelingTransformationMatrix(mesh);
-		Matrix4 transformationMatrix = multiplyMatrixWithMatrix(cameraTransformationMatrix, modelingTransformationMatrix); // camera * modeling 
-		transformationMatrix = multiplyMatrixWithMatrix(projectionTransformationMatrix, transformationMatrix); // projection * camera * modeling
 		/*
 			For each triangle we need to do these steps:
 			1. Apply modeling transformation matrix
@@ -499,10 +500,15 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 			6. Apply viewport transformation matrix
 			7. Rasterize
 		*/
+		Matrix4 modelingTransformationMatrix = getModelingTransformationMatrix(mesh);
+		Matrix4 camera_modeling_transformationMatrix = multiplyMatrixWithMatrix(cameraTransformationMatrix, modelingTransformationMatrix);
+		Matrix4 proj_camera_modeling_transformationMatrix = multiplyMatrixWithMatrix(projectionTransformationMatrix, camera_modeling_transformationMatrix);
+
 		for(Triangle triangle : mesh->triangles){
 			Vec3* v1 = this->vertices[triangle.vertexIds[0] - 1];
 			Vec3* v2 = this->vertices[triangle.vertexIds[1] - 1];
 			Vec3* v3 = this->vertices[triangle.vertexIds[2] - 1];
+
 			Color* c1 = this->colorsOfVertices[triangle.vertexIds[0] - 1];
 			Color* c2 = this->colorsOfVertices[triangle.vertexIds[1] - 1];
 			Color* c3 = this->colorsOfVertices[triangle.vertexIds[2] - 1];
@@ -511,26 +517,25 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 			Vec4 v2Vec4 = Vec4(v2->x, v2->y, v2->z, 1, v2->colorId);
 			Vec4 v3Vec4 = Vec4(v3->x, v3->y, v3->z, 1, v3->colorId);
 
-			v1Vec4 = multiplyMatrixWithVec4(transformationMatrix, v1Vec4);
-			v2Vec4 = multiplyMatrixWithVec4(transformationMatrix, v2Vec4);
-			v3Vec4 = multiplyMatrixWithVec4(transformationMatrix, v3Vec4);
+			// Apply camera transformation matrix
+			v1Vec4 = multiplyMatrixWithVec4(proj_camera_modeling_transformationMatrix, v1Vec4);
+			v2Vec4 = multiplyMatrixWithVec4(proj_camera_modeling_transformationMatrix, v2Vec4);
+			v3Vec4 = multiplyMatrixWithVec4(proj_camera_modeling_transformationMatrix, v3Vec4);
 
-			// If perspective projection, divide by t
-			if(camera->projectionType == PERSPECTIVE_PROJECTION){
-				v1Vec4 = v1Vec4 / v1Vec4.t;
-				v2Vec4 = v2Vec4 / v2Vec4.t;
-				v3Vec4 = v3Vec4 / v3Vec4.t;
-			}
-
-			Vec3 v1Vec3 = Vec3(v1Vec4.x, v1Vec4.y, v1Vec4.z, v1Vec4.colorId);
-			Vec3 v2Vec3 = Vec3(v2Vec4.x, v2Vec4.y, v2Vec4.z, v2Vec4.colorId);
-			Vec3 v3Vec3 = Vec3(v3Vec4.x, v3Vec4.y, v3Vec4.z, v3Vec4.colorId);
-
-
-			if (this->cullingEnabled && isBackfaceCulled(camera, v1Vec3, v2Vec3, v3Vec3))
+			if (this->cullingEnabled && isBackfaceCulled(v1Vec4, v2Vec4, v3Vec4))
 			{
 				continue;
 			}
+
+			// Perspective division
+			v1Vec4 = v1Vec4 / v1Vec4.t;
+			v2Vec4 = v2Vec4 / v2Vec4.t;
+			v3Vec4 = v3Vec4 / v3Vec4.t;
+			
+			Vec3 v1Vec3 = Vec3(v1Vec4.x, v1Vec4.y, v1Vec4.z, v1Vec4.colorId);
+			Vec3 v2Vec3 = Vec3(v2Vec4.x, v2Vec4.y, v2Vec4.z, v2Vec4.colorId);
+			Vec3 v3Vec3 = Vec3(v3Vec4.x, v3Vec4.y, v3Vec4.z, v3Vec4.colorId);
+			
 
 			if (mesh->type == WIREFRAME_MESH)
 			{
@@ -549,15 +554,16 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 						lines[i].applyTransformationMatrix(viewportTransformationMatrix);
 						rasterizeLine(&lines[i]);
 					}
+					else cout << lines[i] << endl;
 				}
 			}
 			else
 			{
 				// Solid rendering mode, just draw triangles
 				// Apply viewport transformation to the triangle coordinates before drawing
-				v1Vec4 = v1Vec4 * viewportTransformationMatrix;
-				v2Vec4 = v2Vec4 * viewportTransformationMatrix;
-				v3Vec4 = v3Vec4 * viewportTransformationMatrix;
+				v1Vec4 = multiplyMatrixWithVec4(viewportTransformationMatrix, v1Vec4);
+				v2Vec4 = multiplyMatrixWithVec4(viewportTransformationMatrix, v2Vec4);
+				v3Vec4 = multiplyMatrixWithVec4(viewportTransformationMatrix, v3Vec4);
 
 				v1Vec4 = v1Vec4 / v1Vec4.t;
 				v2Vec4 = v2Vec4 / v2Vec4.t;
