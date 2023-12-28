@@ -14,6 +14,9 @@
 #include <glm/glm.hpp> // GL Math library header
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp> 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 
 #define BUFFER_OFFSET(i) ((char*)NULL + (i))
 
@@ -68,6 +71,12 @@ struct Face
 	GLuint vIndex[3], tIndex[3], nIndex[3];
 };
 
+struct Image
+{
+	int width, height, channels;
+	unsigned char* data;
+} image;
+
 vector<Vertex> gVertices;
 vector<Texture> gTextures;
 vector<Normal> gNormals;
@@ -76,6 +85,76 @@ vector<Face> gFaces;
 GLuint gVertexAttribBuffer, gIndexBuffer;
 GLint gInVertexLoc, gInNormalLoc;
 int gVertexDataSizeInBytes, gNormalDataSizeInBytes;
+
+float displacement = 0.0f;
+float speed = 10.0f;
+float acceleration = 0.01f;
+float moveSpeed = 0.025f;
+bool rightPressed = false;
+bool leftPressed = false;
+bool inHappyState = false;
+float remainingTurnAngleHappy = 0.f;
+bool isFainting = false;
+float turnSpeed = 5.f;
+
+struct Checkpoint
+{
+	GLfloat xPosition, zPosition;
+	GLboolean isYellow, rendered;
+} checkpoints[3];
+
+float checkpointRadius = 0.25f; // This is the radius of the checkpoint. If the player is within this radius, then they have reached the checkpoint.
+
+void CreateCheckpoints()
+{
+	// Create checkpoints far away from the player, and translate them closer to the player according to the player's speed.
+	
+	checkpoints[0].xPosition = -1.f;
+	checkpoints[0].zPosition = -10.f;
+	checkpoints[0].isYellow = false;
+
+	checkpoints[1].xPosition = 0.f;
+	checkpoints[1].zPosition = -10.f;
+	checkpoints[1].isYellow = false;
+
+	checkpoints[2].xPosition = 1.f;
+	checkpoints[2].zPosition = -10.f;
+	checkpoints[2].isYellow = false;
+
+	// Choose a random checkpoint to be yellow.
+
+	int randomCheckpoint = rand() % 3;
+	checkpoints[randomCheckpoint].isYellow = true;
+
+	// Print all checkpoints to the console.
+	for (int i = 0; i < 3; i++)
+	{
+		cout << "Checkpoint " << i+1 << ": " << checkpoints[i].isYellow << endl;
+	}
+	std::cout << std::endl;
+
+
+}
+
+int CheckCollision(float xDisplacement)
+{
+	// Check if the player has collided with a checkpoint. If so, return the index of the checkpoint. Otherwise, return -1.
+
+	for (int i = 0; i < 3; i++)
+	{
+		float xDistance = checkpoints[i].xPosition - xDisplacement;
+		float zDistance = checkpoints[i].zPosition - 3.f;
+
+		float distance = sqrt(pow(xDistance, 2) + pow(zDistance, 2));
+
+		if (distance <= checkpointRadius)
+		{
+			return i;
+		}		
+	}
+
+	return -1;
+}
 
 bool ParseObj(const string& fileName)
 {
@@ -208,9 +287,7 @@ bool ParseObj(const string& fileName)
 	return true;
 }
 
-bool ReadDataFromFile(
-	const string& fileName, ///< [in]  Name of the shader file
-	string& data)     ///< [out] The contents of the file
+bool ReadDataFromFile( const string& fileName, string& data)
 {
 	fstream myfile;
 
@@ -299,19 +376,15 @@ void initShaders()
 
 	// Create the shaders for both programs
 
-	GLuint vs1 = createVS("vert.glsl");
-	GLuint fs1 = createFS("frag.glsl");
-
-	GLuint vs2 = createVS("vert2.glsl");
-	GLuint fs2 = createFS("frag2.glsl");
-
+	GLuint vs1 = createVS("bunny_vert.glsl");
+	GLuint fs1 = createFS("bunny_frag.glsl");
 	// Attach the shaders to the programs
 
 	glAttachShader(gProgram[0], vs1);
 	glAttachShader(gProgram[0], fs1);
 
-	glAttachShader(gProgram[1], vs2);
-	glAttachShader(gProgram[1], fs2);
+	glAttachShader(gProgram[1], vs1);
+	glAttachShader(gProgram[1], fs1);
 
 	// Link the programs
 
@@ -390,12 +463,12 @@ void initVBO()
 		maxZ = std::max(maxZ, gVertices[i].z);
 	}
 
-	std::cout << "minX = " << minX << std::endl;
-	std::cout << "maxX = " << maxX << std::endl;
-	std::cout << "minY = " << minY << std::endl;
-	std::cout << "maxY = " << maxY << std::endl;
-	std::cout << "minZ = " << minZ << std::endl;
-	std::cout << "maxZ = " << maxZ << std::endl;
+	// std::cout << "minX = " << minX << std::endl;
+	// std::cout << "maxX = " << maxX << std::endl;
+	// std::cout << "minY = " << minY << std::endl;
+	// std::cout << "maxY = " << maxY << std::endl;
+	// std::cout << "minZ = " << minZ << std::endl;
+	// std::cout << "maxZ = " << maxZ << std::endl;
 
 	for (int i = 0; i < gNormals.size(); ++i)
 	{
@@ -426,10 +499,31 @@ void initVBO()
 	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(gVertexDataSizeInBytes));
 }
 
+void LoadImage(const string& fileName)
+{
+	int width, height, channels;
+	unsigned char* data = stbi_load(fileName.c_str(), &width, &height, &channels, 0);
+
+	if (data)
+	{
+		image.width = width;
+		image.height = height;
+		image.channels = channels;
+		image.data = data;
+	}
+	else
+	{
+		cout << "Cannot load image: " << fileName << endl;
+		exit(-1);
+	}
+}
+
 void init()
 {
-	ParseObj("armadillo.obj");
-	//ParseObj("bunny.obj");
+	//ParseObj("armadillo.obj");
+	ParseObj("bunny.obj");
+	LoadImage("sky.jpg");
+	CreateCheckpoints();
 
 	glEnable(GL_DEPTH_TEST);
 	initShaders();
@@ -447,6 +541,7 @@ void drawModel()
 	glDrawElements(GL_TRIANGLES, gFaces.size() * 3, GL_UNSIGNED_INT, 0);
 }
 
+
 void display()
 {
 	glClearColor(0, 0, 0, 1);
@@ -454,21 +549,33 @@ void display()
 	glClearStencil(0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
-	static float angle = 0;
-
-	float angleRad = (float)(angle / 180.0) * M_PI;
+	float height = cos(speed * 10.f) / 10.f - 2.f;
+	float yRot = (-90. / 180.) * M_PI;
+	float zRot = -1.f;
+	if (inHappyState)
+	{
+		yRot -= remainingTurnAngleHappy / 180.f * M_PI;
+		remainingTurnAngleHappy -= turnSpeed;
+		if (remainingTurnAngleHappy <= 0.f)
+		{
+			inHappyState = false;
+		}
+	}
 
 	// Compute the modeling matrix 
-	glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(0.f, 0.f, -3.f));
-	glm::mat4 matS = glm::scale(glm::mat4(1.0), glm::vec3(0.5, 0.5, 0.5));
-	glm::mat4 matR = glm::rotate<float>(glm::mat4(1.0), (-180. / 180.) * M_PI, glm::vec3(0.0, 1.0, 0.0));
-	glm::mat4 matRz = glm::rotate(glm::mat4(1.0), angleRad, glm::vec3(0.0, 0.0, 1.0));
-	modelingMatrix = matT * matRz * matR; // starting from right side, rotate around Y to turn back, then rotate around Z some more at each frame, then translate.
-
-	// or... (care for the order! first the very bottom oneis applied)
-	//modelingMatrix = glm::translate(glm::mat4(1.0), glm::vec3(0.f, 0.f, -3.f));
-	//modelingMatrix = glm::rotate(modelingMatrix, angleRad, glm::vec3(0.0, 0.0, 1.0));
-	//modelingMatrix = glm::rotate<float>(modelingMatrix, (- 180. / 180.) * M_PI, glm::vec3(0.0, 1.0, 0.0));
+	glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(displacement, height, -3.f)); // Translate to the right and down
+	glm::mat4 matS = glm::scale(glm::mat4(1.0), glm::vec3(0.5, 0.5, 0.5)); // Scale down by 50%
+	glm::mat4 matYR = glm::rotate<float>(glm::mat4(1.0), yRot, glm::vec3(0.0, 1.0, 0.0)); // Rotate around Y axis to turn back
+	if (isFainting)
+	{
+		speed = 0.f;
+		acceleration = 0.f;
+		zRot = (-90. / 180.) * M_PI;
+		glm::mat4 matZR = glm::rotate<float>(glm::mat4(1.0), zRot, glm::vec3(0.0, 0.0, 1.0)); // Rotate around Z axis to fall down
+		modelingMatrix = matT * matS * matZR * matYR; // starting from right side
+	}
+	else
+		modelingMatrix = matT * matS * matYR; // starting from right side
 
 	// Set the active program and the values of its uniform variables
 	glUseProgram(gProgram[activeProgramIndex]);
@@ -479,8 +586,6 @@ void display()
 
 	// Draw the scene
 	drawModel();
-
-	angle += 0.9;
 }
 
 void reshape(GLFWwindow* window, int w, int h)
@@ -506,35 +611,85 @@ void reshape(GLFWwindow* window, int w, int h)
 
 }
 
+void setHappy()
+{
+	inHappyState = true;
+	remainingTurnAngleHappy = 360.f;
+}
+
+void setFaint()
+{
+	isFainting = true;
+}
+
 void keyboard(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
-	if (key == GLFW_KEY_Q && action == GLFW_PRESS)
+	if (action == GLFW_PRESS)
 	{
-		glfwSetWindowShouldClose(window, GLFW_TRUE);
+		switch (key)
+		{
+			case GLFW_KEY_RIGHT:
+			case GLFW_KEY_D:
+				rightPressed = true;
+				break;
+			case GLFW_KEY_LEFT:
+			case GLFW_KEY_A:
+				leftPressed = true;
+				break;
+			case GLFW_KEY_ESCAPE:
+				glfwSetWindowShouldClose(window, GL_TRUE);
+				break;
+			case GLFW_KEY_R:
+				// TODO: reset game.
+				break;
+			case GLFW_KEY_H: // TODO: remove this later
+				setHappy();
+				break;
+			case GLFW_KEY_F: // TODO: remove this later
+				setFaint();
+				break;
+		}
 	}
-	else if (key == GLFW_KEY_G && action == GLFW_PRESS)
+	else if (action == GLFW_RELEASE)
 	{
-		activeProgramIndex = 0;
+		switch (key)
+		{
+			case GLFW_KEY_RIGHT:
+			case GLFW_KEY_D:
+				rightPressed = false;
+				break;
+			case GLFW_KEY_LEFT:
+			case GLFW_KEY_A:
+				leftPressed = false;
+				break;
+		}
 	}
-	else if (key == GLFW_KEY_P && action == GLFW_PRESS)
+}
+
+void calculateValues(){
+	if (rightPressed)
 	{
-		activeProgramIndex = 1;
+		displacement = min(displacement + moveSpeed, 2.0f);
 	}
-	else if (key == GLFW_KEY_F && action == GLFW_PRESS)
+	else if (leftPressed)
 	{
-		glShadeModel(GL_FLAT);
+		displacement = max(displacement - moveSpeed, -2.0f);
 	}
-	else if (key == GLFW_KEY_S && action == GLFW_PRESS)
+	speed += acceleration;
+}
+
+void checkCollision()
+{
+	int checkpointIndex = CheckCollision(displacement);
+	if (checkpointIndex == -1) return;
+
+	if (checkpoints[checkpointIndex].isYellow)
 	{
-		glShadeModel(GL_SMOOTH);
+		setHappy();
 	}
-	else if (key == GLFW_KEY_W && action == GLFW_PRESS)
+	else
 	{
-		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-	}
-	else if (key == GLFW_KEY_E && action == GLFW_PRESS)
-	{
-		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+		setFaint();
 	}
 }
 
@@ -542,6 +697,8 @@ void mainLoop(GLFWwindow* window)
 {
 	while (!glfwWindowShouldClose(window))
 	{
+		checkCollision();
+		calculateValues();
 		display();
 		glfwSwapBuffers(window);
 		glfwPollEvents();
@@ -584,8 +741,8 @@ int main(int argc, char** argv)   // Create Main Function For Bringing It All To
 	}
 
 	char rendererInfo[512] = { 0 };
-	// If defined windows use strcpy_s instead of strcpy and strcat_s instead of strcat
-#if defined(_WIN32)
+
+#if defined(_WIN32) // If defined windows use strcpy_s instead of strcpy and strcat_s inst ead of strcat
 	strcpy_s(rendererInfo, (const char*)glGetString(GL_RENDERER));
 	strcat_s(rendererInfo, " - ");
 	strcat_s(rendererInfo, (const char*)glGetString(GL_VERSION));
