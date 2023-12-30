@@ -33,12 +33,12 @@ using namespace std;
 FT_Library library;
 
 vector<GLuint> gProgram; // Each program contains a vertex shader and a fragment shader. For each program, we store its ID here.
-GLuint bunnyProgram; // This is the program for the bunny.
-GLuint skyboxProgram; // This is the program for the skybox.
-GLuint checkerboardProgram; // This is the program for the checkerboard.
-GLuint yellowCheckpointsProgram; // This is the program for the yellow checkpoints.
-GLuint redCheckpointsProgram; // This is the program for the red checkpoints.
-GLuint glyphProgram; // This is the program for the glyphs.
+int bunnyProgram; // This is the program for the bunny.
+int skyboxProgram; // This is the program for the skybox.
+int checkerboardProgram; // This is the program for the checkerboard.
+int yellowCheckpointsProgram; // This is the program for the yellow checkpoints.
+int redCheckpointsProgram; // This is the program for the red checkpoints.
+int glyphProgram; // This is the program for the glyphs.
 
 int gWidth, gHeight;
 
@@ -371,7 +371,7 @@ void initShaders()
 	glAttachShader(gProgram[0], vs1);
 	glAttachShader(gProgram[0], fs1);
 
-	bunnyProgram = gProgram[0];
+	bunnyProgram = 0;
 
 	// Create the shaders for the checkerboard program
 	GLuint vs2 = createVS("checkerboard_vert.glsl");
@@ -381,7 +381,7 @@ void initShaders()
 	glAttachShader(gProgram[1], vs2);
 	glAttachShader(gProgram[1], fs2);
 
-	checkerboardProgram = gProgram[1];
+	checkerboardProgram = 1;
 
 	checkerboardScaleLoc = glGetUniformLocation(gProgram[1], "scale");
 	checkerboardOffsetLoc = glGetUniformLocation(gProgram[1], "offset");
@@ -394,7 +394,7 @@ void initShaders()
 	glAttachShader(gProgram[2], vs3);
 	glAttachShader(gProgram[2], fs3);
 
-	skyboxProgram = gProgram[2];
+	skyboxProgram = 2;
 
 	// Create the shaders for the yellow checkpoints program
 	GLuint vs4 = createVS("ycheckpoint_vert.glsl");
@@ -404,7 +404,7 @@ void initShaders()
 	glAttachShader(gProgram[3], vs4);
 	glAttachShader(gProgram[3], fs4);
 
-	yellowCheckpointsProgram = gProgram[3];
+	yellowCheckpointsProgram = 3;
 
 	// Create the shaders for the red checkpoints program
 	GLuint vs5 = createVS("rcheckpoint_vert.glsl");
@@ -414,7 +414,7 @@ void initShaders()
 	glAttachShader(gProgram[4], vs5);
 	glAttachShader(gProgram[4], fs5);
 
-	redCheckpointsProgram = gProgram[4];
+	redCheckpointsProgram = 4;
 
 	// Create the shaders for the glyphs program
 	GLuint vs6 = createVS("glyph_vert.glsl");
@@ -424,7 +424,7 @@ void initShaders()
 	glAttachShader(gProgram[5], vs6);
 	glAttachShader(gProgram[5], fs6);
 
-	glyphProgram = gProgram[5];
+	glyphProgram = 5;
 
 	// Link the programs
 	GLint status;
@@ -681,8 +681,8 @@ void init()
 	CreateCheckpoints();
 
 	glEnable(GL_DEPTH_TEST);
-	// glEnable(GL_BLEND);
-	// glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);  
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);  
 	initShaders();
 	initVBO(bunny);
 	initVBO(checkerboard);
