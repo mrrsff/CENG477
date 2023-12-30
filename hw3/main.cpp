@@ -1,3 +1,7 @@
+#define _USE_MATH_DEFINES
+
+#define BUFFER_OFFSET(i) ((char*)NULL + (i))
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -6,36 +10,48 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
-#define _USE_MATH_DEFINES
+#include <map>
 #include <math.h> 
+
 #include <GL/glew.h>
 //#include <OpenGL/gl3.h>   // The GL Header File
 #include <GLFW/glfw3.h> // The GLFW header
+
 #include <glm/glm.hpp> // GL Math library header
 #include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp> 
+#include <glm/gtc/type_ptr.hpp>
+
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
+#include <freetype2/ft2build.h>
+#include FT_FREETYPE_H
 
-#define BUFFER_OFFSET(i) ((char*)NULL + (i))
 
 using namespace std;
 
-GLuint gProgram[2];
+FT_Library library;
+
+vector<GLuint> gProgram; // Each program contains a vertex shader and a fragment shader. For each program, we store its ID here.
+GLuint bunnyProgram; // This is the program for the bunny.
+GLuint skyboxProgram; // This is the program for the skybox.
+GLuint checkerboardProgram; // This is the program for the checkerboard.
+GLuint yellowCheckpointsProgram; // This is the program for the yellow checkpoints.
+GLuint redCheckpointsProgram; // This is the program for the red checkpoints.
+GLuint glyphProgram; // This is the program for the glyphs.
+
 int gWidth, gHeight;
 
-GLint modelingMatrixLoc[2];
-GLint viewingMatrixLoc[2];
-GLint projectionMatrixLoc[2];
-GLint eyePosLoc[2];
+vector<GLint> modelingMatrixLoc;
+vector<GLint> viewingMatrixLoc;
+vector<GLint> projectionMatrixLoc;
+vector<GLint> eyePosLoc;
+GLfloat checkerboardScaleLoc, checkerboardOffsetLoc;
 
 glm::mat4 projectionMatrix;
 glm::mat4 viewingMatrix;
 glm::mat4 modelingMatrix;
 glm::vec3 eyePos(0, 0, 0);
-
-int activeProgramIndex = 0;
 
 struct Vertex
 {
@@ -75,17 +91,68 @@ struct Image
 {
 	int width, height, channels;
 	unsigned char* data;
-} image;
+} skybox;
 
-vector<Vertex> gVertices;
-vector<Texture> gTextures;
-vector<Normal> gNormals;
-vector<Face> gFaces;
+struct Character {
+    unsigned int TextureID;  // ID handle of the glyph texture
+    glm::ivec2   Size;       // Size of glyph
+    glm::ivec2   Bearing;    // Offset from baseline to left/top of glyph
+    unsigned int Advance;    // Offset to advance to next glyph
+};
 
-GLuint gVertexAttribBuffer, gIndexBuffer;
-GLint gInVertexLoc, gInNormalLoc;
-int gVertexDataSizeInBytes, gNormalDataSizeInBytes;
+map<char, Character> Characters;
+unsigned int charVAO, charVBO;
 
+struct Object
+{
+	string name;
+	vector<Vertex> vertices;
+	vector<Texture> textures;
+	vector<Normal> normals;
+	vector<Face> faces;
+	GLuint vertexAttribBuffer, indexBuffer; // vbo's
+	GLint inVertexLoc, inNormalLoc; // attribute locations
+	GLuint vao; // vertex array object
+	int vertexDataSizeInBytes, normalDataSizeInBytes;
+
+	Object() {
+	}
+
+	friend ostream& operator<<(ostream& os, const Object& obj)
+	{
+		os << "Vertices: " << endl;
+		for (int i = 0; i < obj.vertices.size(); ++i)
+		{
+			os << obj.vertices[i].x << " " << obj.vertices[i].y << " " << obj.vertices[i].z << endl;
+		}
+
+		os << "Normals: " << endl;
+		for (int i = 0; i < obj.normals.size(); ++i)
+		{
+			os << obj.normals[i].x << " " << obj.normals[i].y << " " << obj.normals[i].z << endl;
+		}
+
+		os << "Faces: " << endl;
+		for (int i = 0; i < obj.faces.size(); ++i)
+		{
+			os << obj.faces[i].vIndex[0] << " " << obj.faces[i].vIndex[1] << " " << obj.faces[i].vIndex[2] << endl;
+		}
+
+		return os;
+	}
+};
+
+struct Checkpoint
+{
+	GLfloat xPosition, zPosition;
+	GLboolean isYellow, rendered;
+} checkpoints[3];
+
+Object bunny;
+Object checkpoint1, checkpoint2, checkpoint3;
+Object checkerboard;
+
+// Game variables
 float displacement = 0.0f;
 float speed = 10.0f;
 float acceleration = 0.01f;
@@ -96,69 +163,16 @@ bool inHappyState = false;
 float remainingTurnAngleHappy = 0.f;
 bool isFainting = false;
 float turnSpeed = 5.f;
+float score = 0;
+float checkpointRadius = 0.1f; // This is the radius of the checkpoint. If the player is within this radius, then they have reached the checkpoint.
+float timeStamp = 0.f;
 
-struct Checkpoint
+Object ParseObj(const string& fileName)
 {
-	GLfloat xPosition, zPosition;
-	GLboolean isYellow, rendered;
-} checkpoints[3];
-
-float checkpointRadius = 0.25f; // This is the radius of the checkpoint. If the player is within this radius, then they have reached the checkpoint.
-
-void CreateCheckpoints()
-{
-	// Create checkpoints far away from the player, and translate them closer to the player according to the player's speed.
-	
-	checkpoints[0].xPosition = -1.f;
-	checkpoints[0].zPosition = -10.f;
-	checkpoints[0].isYellow = false;
-
-	checkpoints[1].xPosition = 0.f;
-	checkpoints[1].zPosition = -10.f;
-	checkpoints[1].isYellow = false;
-
-	checkpoints[2].xPosition = 1.f;
-	checkpoints[2].zPosition = -10.f;
-	checkpoints[2].isYellow = false;
-
-	// Choose a random checkpoint to be yellow.
-
-	int randomCheckpoint = rand() % 3;
-	checkpoints[randomCheckpoint].isYellow = true;
-
-	// Print all checkpoints to the console.
-	for (int i = 0; i < 3; i++)
-	{
-		cout << "Checkpoint " << i+1 << ": " << checkpoints[i].isYellow << endl;
-	}
-	std::cout << std::endl;
-
-
-}
-
-int CheckCollision(float xDisplacement)
-{
-	// Check if the player has collided with a checkpoint. If so, return the index of the checkpoint. Otherwise, return -1.
-
-	for (int i = 0; i < 3; i++)
-	{
-		float xDistance = checkpoints[i].xPosition - xDisplacement;
-		float zDistance = checkpoints[i].zPosition - 3.f;
-
-		float distance = sqrt(pow(xDistance, 2) + pow(zDistance, 2));
-
-		if (distance <= checkpointRadius)
-		{
-			return i;
-		}		
-	}
-
-	return -1;
-}
-
-bool ParseObj(const string& fileName)
-{
+	Object obj;
 	fstream myfile;
+	// Strip .obj from the file name
+	obj.name = fileName.substr(0, fileName.length() - 4);
 
 	// Open the input 
 	myfile.open(fileName.c_str(), std::ios::in);
@@ -182,19 +196,19 @@ bool ParseObj(const string& fileName)
 					{
 						str >> tmp; // consume "vt"
 						str >> c1 >> c2;
-						gTextures.push_back(Texture(c1, c2));
+						obj.textures.push_back(Texture(c1, c2));
 					}
 					else if (curLine[1] == 'n') // normal
 					{
 						str >> tmp; // consume "vn"
 						str >> c1 >> c2 >> c3;
-						gNormals.push_back(Normal(c1, c2, c3));
+						obj.normals.push_back(Normal(c1, c2, c3));
 					}
 					else // vertex
 					{
 						str >> tmp; // consume "v"
 						str >> c1 >> c2 >> c3;
-						gVertices.push_back(Vertex(c1, c2, c3));
+						obj.vertices.push_back(Vertex(c1, c2, c3));
 					}
 				}
 				else if (curLine[0] == 'f') // face
@@ -221,11 +235,7 @@ bool ParseObj(const string& fileName)
 						tIndex[c] -= 1;
 					}
 
-					gFaces.push_back(Face(vIndex, tIndex, nIndex));
-				}
-				else
-				{
-					cout << "Ignoring unidentified line in obj file: " << curLine << endl;
+					obj.faces.push_back(Face(vIndex, tIndex, nIndex));
 				}
 			}
 
@@ -238,53 +248,9 @@ bool ParseObj(const string& fileName)
 
 		myfile.close();
 	}
-	else
-	{
-		return false;
-	}
 
-	/*
-	for (int i = 0; i < gVertices.size(); ++i)
-	{
-		Vector3 n;
-
-		for (int j = 0; j < gFaces.size(); ++j)
-		{
-			for (int k = 0; k < 3; ++k)
-			{
-				if (gFaces[j].vIndex[k] == i)
-				{
-					// face j contains vertex i
-					Vector3 a(gVertices[gFaces[j].vIndex[0]].x,
-							  gVertices[gFaces[j].vIndex[0]].y,
-							  gVertices[gFaces[j].vIndex[0]].z);
-
-					Vector3 b(gVertices[gFaces[j].vIndex[1]].x,
-							  gVertices[gFaces[j].vIndex[1]].y,
-							  gVertices[gFaces[j].vIndex[1]].z);
-
-					Vector3 c(gVertices[gFaces[j].vIndex[2]].x,
-							  gVertices[gFaces[j].vIndex[2]].y,
-							  gVertices[gFaces[j].vIndex[2]].z);
-
-					Vector3 ab = b - a;
-					Vector3 ac = c - a;
-					Vector3 normalFromThisFace = (ab.cross(ac)).getNormalized();
-					n += normalFromThisFace;
-				}
-
-			}
-		}
-
-		n.normalize();
-
-		gNormals.push_back(Normal(n.x, n.y, n.z));
-	}
-	*/
-
-	assert(gVertices.size() == gNormals.size());
-
-	return true;
+	assert(obj.vertices.size() == obj.normals.size());
+	return obj;
 }
 
 bool ReadDataFromFile( const string& fileName, string& data)
@@ -317,6 +283,25 @@ bool ReadDataFromFile( const string& fileName, string& data)
 	return true;
 }
 
+void LoadImage(const string& fileName)
+{
+	int width, height, channels;
+	unsigned char* data = stbi_load(fileName.c_str(), &width, &height, &channels, 0);
+
+	if (data)
+	{
+		skybox.width = width;
+		skybox.height = height;
+		skybox.channels = channels;
+		skybox.data = data;
+	}
+	else
+	{
+		cout << "Cannot load skybox: " << fileName << endl;
+		exit(-1);
+	}
+}
+
 GLuint createVS(const char* shaderName)
 {
 	string shaderSource;
@@ -337,7 +322,7 @@ GLuint createVS(const char* shaderName)
 
 	char output[1024] = { 0 };
 	glGetShaderInfoLog(vs, 1024, &length, output);
-	printf("VS compile log: %s\n", output);
+	if (strlen(output) > 0) printf("VS compile log: %s\n", output);
 
 	return vs;
 }
@@ -362,7 +347,7 @@ GLuint createFS(const char* shaderName)
 
 	char output[1024] = { 0 };
 	glGetShaderInfoLog(fs, 1024, &length, output);
-	printf("FS compile log: %s\n", output);
+	if (strlen(output) > 0) printf("FS compile log: %s\n", output);
 
 	return fs;
 }
@@ -370,46 +355,99 @@ GLuint createFS(const char* shaderName)
 void initShaders()
 {
 	// Create the programs
+	gProgram.resize(6);
 
-	gProgram[0] = glCreateProgram();
-	gProgram[1] = glCreateProgram();
+	for (int i = 0; i < gProgram.size(); ++i)
+	{
+		gProgram[i] = glCreateProgram();
+	}
 
 	// Create the shaders for both programs
 
 	GLuint vs1 = createVS("bunny_vert.glsl");
 	GLuint fs1 = createFS("bunny_frag.glsl");
-	// Attach the shaders to the programs
 
+	// Attach the shaders to the programs
 	glAttachShader(gProgram[0], vs1);
 	glAttachShader(gProgram[0], fs1);
 
-	glAttachShader(gProgram[1], vs1);
-	glAttachShader(gProgram[1], fs1);
+	bunnyProgram = gProgram[0];
+
+	// Create the shaders for the checkerboard program
+	GLuint vs2 = createVS("checkerboard_vert.glsl");
+	GLuint fs2 = createFS("checkerboard_frag.glsl");
+
+	// Attach the shaders to the programs
+	glAttachShader(gProgram[1], vs2);
+	glAttachShader(gProgram[1], fs2);
+
+	checkerboardProgram = gProgram[1];
+
+	checkerboardScaleLoc = glGetUniformLocation(gProgram[1], "scale");
+	checkerboardOffsetLoc = glGetUniformLocation(gProgram[1], "offset");
+
+	// Create the shaders for the skybox program
+	GLuint vs3 = createVS("skybox_vert.glsl");
+	GLuint fs3 = createFS("skybox_frag.glsl");
+
+	// Attach the shaders to the programs
+	glAttachShader(gProgram[2], vs3);
+	glAttachShader(gProgram[2], fs3);
+
+	skyboxProgram = gProgram[2];
+
+	// Create the shaders for the yellow checkpoints program
+	GLuint vs4 = createVS("ycheckpoint_vert.glsl");
+	GLuint fs4 = createFS("ycheckpoint_frag.glsl");
+
+	// Attach the shaders to the programs
+	glAttachShader(gProgram[3], vs4);
+	glAttachShader(gProgram[3], fs4);
+
+	yellowCheckpointsProgram = gProgram[3];
+
+	// Create the shaders for the red checkpoints program
+	GLuint vs5 = createVS("rcheckpoint_vert.glsl");
+	GLuint fs5 = createFS("rcheckpoint_frag.glsl");
+
+	// Attach the shaders to the programs
+	glAttachShader(gProgram[4], vs5);
+	glAttachShader(gProgram[4], fs5);
+
+	redCheckpointsProgram = gProgram[4];
+
+	// Create the shaders for the glyphs program
+	GLuint vs6 = createVS("glyph_vert.glsl");
+	GLuint fs6 = createFS("glyph_frag.glsl");
+
+	// Attach the shaders to the programs
+	glAttachShader(gProgram[5], vs6);
+	glAttachShader(gProgram[5], fs6);
+
+	glyphProgram = gProgram[5];
 
 	// Link the programs
-
-	glLinkProgram(gProgram[0]);
 	GLint status;
-	glGetProgramiv(gProgram[0], GL_LINK_STATUS, &status);
 
-	if (status != GL_TRUE)
+	for (int i = 0; i < gProgram.size(); ++i)
 	{
-		cout << "Program link failed" << endl;
-		exit(-1);
-	}
+		glLinkProgram(gProgram[i]);
+		glGetProgramiv(gProgram[i], GL_LINK_STATUS, &status);
 
-	glLinkProgram(gProgram[1]);
-	glGetProgramiv(gProgram[1], GL_LINK_STATUS, &status);
-
-	if (status != GL_TRUE)
-	{
-		cout << "Program link failed" << endl;
-		exit(-1);
+		if (status != GL_TRUE)
+		{
+			cout << "Program " << i << " link failed" << endl;
+			exit(-1);
+		}
 	}
 
 	// Get the locations of the uniform variables from both programs
+	modelingMatrixLoc.resize(gProgram.size());
+	viewingMatrixLoc.resize(gProgram.size());
+	projectionMatrixLoc.resize(gProgram.size());
+	eyePosLoc.resize(gProgram.size());
 
-	for (int i = 0; i < 2; ++i)
+	for (int i = 0; i < gProgram.size(); ++i)
 	{
 		modelingMatrixLoc[i] = glGetUniformLocation(gProgram[i], "modelingMatrix");
 		viewingMatrixLoc[i] = glGetUniformLocation(gProgram[i], "viewingMatrix");
@@ -418,140 +456,242 @@ void initShaders()
 	}
 }
 
-void initVBO()
+void initVBO(Object& obj)
 {
-	GLuint vao;
-	glGenVertexArrays(1, &vao);
-	assert(vao > 0);
-	glBindVertexArray(vao);
-	cout << "vao = " << vao << endl;
-
-	glEnableVertexAttribArray(0);
-	glEnableVertexAttribArray(1);
-	assert(glGetError() == GL_NONE);
-
-	glGenBuffers(1, &gVertexAttribBuffer);
-	glGenBuffers(1, &gIndexBuffer);
-
-	assert(gVertexAttribBuffer > 0 && gIndexBuffer > 0);
-
-	glBindBuffer(GL_ARRAY_BUFFER, gVertexAttribBuffer);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gIndexBuffer);
-
-	gVertexDataSizeInBytes = gVertices.size() * 3 * sizeof(GLfloat);
-	gNormalDataSizeInBytes = gNormals.size() * 3 * sizeof(GLfloat);
-	int indexDataSizeInBytes = gFaces.size() * 3 * sizeof(GLuint);
-	GLfloat* vertexData = new GLfloat[gVertices.size() * 3];
-	GLfloat* normalData = new GLfloat[gNormals.size() * 3];
-	GLuint* indexData = new GLuint[gFaces.size() * 3];
-
-	float minX = 1e6, maxX = -1e6;
-	float minY = 1e6, maxY = -1e6;
-	float minZ = 1e6, maxZ = -1e6;
-
-	for (int i = 0; i < gVertices.size(); ++i)
+	bool error = false;
+	cout << "Initializing VBO for " << obj.name << endl;
+	glGenVertexArrays(1, &obj.vao); // create a VAO for the object
+	assert(obj.vao > 0); // make sure VAO has been created
+	cout << obj.name << " VAO: " << obj.vao << endl;
+	glBindVertexArray(obj.vao); // make it active
+	auto err = glGetError();
+	if (err != GL_NONE)
 	{
-		vertexData[3 * i] = gVertices[i].x;
-		vertexData[3 * i + 1] = gVertices[i].y;
-		vertexData[3 * i + 2] = gVertices[i].z;
-
-		minX = std::min(minX, gVertices[i].x);
-		maxX = std::max(maxX, gVertices[i].x);
-		minY = std::min(minY, gVertices[i].y);
-		maxY = std::max(maxY, gVertices[i].y);
-		minZ = std::min(minZ, gVertices[i].z);
-		maxZ = std::max(maxZ, gVertices[i].z);
+		cout << "Error occurred when binding VAO for " << obj.name << ", error = " << err << endl;
+		error = true;
 	}
 
-	// std::cout << "minX = " << minX << std::endl;
-	// std::cout << "maxX = " << maxX << std::endl;
-	// std::cout << "minY = " << minY << std::endl;
-	// std::cout << "maxY = " << maxY << std::endl;
-	// std::cout << "minZ = " << minZ << std::endl;
-	// std::cout << "maxZ = " << maxZ << std::endl;
-
-	for (int i = 0; i < gNormals.size(); ++i)
+	glEnableVertexAttribArray(0); // inVertex
+	glEnableVertexAttribArray(1); // inNormal
+	err = glGetError();
+	if (err != GL_NONE)
 	{
-		normalData[3 * i] = gNormals[i].x;
-		normalData[3 * i + 1] = gNormals[i].y;
-		normalData[3 * i + 2] = gNormals[i].z;
+		cout << "Error occurred when enabling vertex attributes for " << obj.name << ", error = " << err << endl;
+		error = true;
 	}
 
-	for (int i = 0; i < gFaces.size(); ++i)
+	glGenBuffers(1, &obj.vertexAttribBuffer); // create a VBO for the vertex attributes
+	glGenBuffers(1, &obj.indexBuffer); // create a VBO for the indices
+
+	assert(obj.vertexAttribBuffer > 0 && obj.indexBuffer > 0); // make sure VBOs have been created
+
+	glBindBuffer(GL_ARRAY_BUFFER, obj.vertexAttribBuffer); // make it active, it is an array buffer
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, obj.indexBuffer); // make it active, it is an element array buffer
+
+	obj.vertexDataSizeInBytes = obj.vertices.size() * 3 * sizeof(GLfloat); // number of vertices * 3 coordinates * size of GLfloat
+	obj.normalDataSizeInBytes = obj.normals.size() * 3 * sizeof(GLfloat); // number of normals * 3 coordinates * size of GLfloat
+	int indexDataSizeInBytes = obj.faces.size() * 3 * sizeof(GLuint); // number of faces * 3 vertices per face * size of GLuint
+	GLfloat* vertexData = new GLfloat[obj.vertices.size() * 3]; // array for vertex data
+	GLfloat* normalData = new GLfloat[obj.normals.size() * 3]; // array for normal data
+	GLuint* indexData = new GLuint[obj.faces.size() * 3]; // array for index data
+
+	// copy the vertex attributes to the buffer object
+	for (int i = 0; i < obj.vertices.size(); ++i)
 	{
-		indexData[3 * i] = gFaces[i].vIndex[0];
-		indexData[3 * i + 1] = gFaces[i].vIndex[1];
-		indexData[3 * i + 2] = gFaces[i].vIndex[2];
+		vertexData[3 * i] = obj.vertices[i].x;
+		vertexData[3 * i + 1] = obj.vertices[i].y;
+		vertexData[3 * i + 2] = obj.vertices[i].z;
 	}
 
+	// copy the normal attributes to the buffer object
+	for (int i = 0; i < obj.normals.size(); ++i)
+	{
+		normalData[3 * i] = obj.normals[i].x;
+		normalData[3 * i + 1] = obj.normals[i].y;
+		normalData[3 * i + 2] = obj.normals[i].z;
+	}
 
-	glBufferData(GL_ARRAY_BUFFER, gVertexDataSizeInBytes + gNormalDataSizeInBytes, 0, GL_STATIC_DRAW);
-	glBufferSubData(GL_ARRAY_BUFFER, 0, gVertexDataSizeInBytes, vertexData);
-	glBufferSubData(GL_ARRAY_BUFFER, gVertexDataSizeInBytes, gNormalDataSizeInBytes, normalData);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, indexDataSizeInBytes, indexData, GL_STATIC_DRAW);
+	// copy the index data to the buffer object
+	for (int i = 0; i < obj.faces.size(); ++i)
+	{
+		indexData[3 * i] = obj.faces[i].vIndex[0];
+		indexData[3 * i + 1] = obj.faces[i].vIndex[1];
+		indexData[3 * i + 2] = obj.faces[i].vIndex[2];
+	}
+
+	glBufferData(GL_ARRAY_BUFFER, obj.vertexDataSizeInBytes + obj.normalDataSizeInBytes, 0, GL_STATIC_DRAW); // allocate space and write the vertex data and normal data to the buffer object at once
+	glBufferSubData(GL_ARRAY_BUFFER, 0, obj.vertexDataSizeInBytes, vertexData); // write the vertex data starting from offset 0
+	glBufferSubData(GL_ARRAY_BUFFER, obj.vertexDataSizeInBytes, obj.normalDataSizeInBytes, normalData); // write the normal data starting from offset vertexDataSizeInBytes
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, indexDataSizeInBytes, indexData, GL_STATIC_DRAW); // allocate space and write the index data to the buffer object
 
 	// done copying to GPU memory; can free now from CPU memory
 	delete[] vertexData;
 	delete[] normalData;
 	delete[] indexData;
 
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
-	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(gVertexDataSizeInBytes));
-}
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0); // specify the vertex attributes (coordinates) in the buffer
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(obj.vertexDataSizeInBytes)); // specify the vertex attributes (normals) in the buffer
 
-void LoadImage(const string& fileName)
-{
-	int width, height, channels;
-	unsigned char* data = stbi_load(fileName.c_str(), &width, &height, &channels, 0);
-
-	if (data)
+	if (error)
 	{
-		image.width = width;
-		image.height = height;
-		image.channels = channels;
-		image.data = data;
+		cout << "VBO initialization failed for " << obj.name << endl;
 	}
 	else
 	{
-		cout << "Cannot load image: " << fileName << endl;
+		cout << "VBO initialization succeeded for " << obj.name << endl;
+	}
+}
+
+void LoadFont(const char* path)
+{
+	if (FT_Init_FreeType(&library))
+	{
+		cout << "Cannot init freetype library" << endl;
 		exit(-1);
 	}
+	FT_Face face;
+	if (FT_New_Face(library, path, 0, &face))
+	{
+		cout << "Cannot open font file" << endl;
+		exit(-1);
+	}
+	FT_Set_Pixel_Sizes(face, 0, 48);
+
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1); // disable byte-alignment restriction
+  
+	// Load first 128 characters of ASCII set
+	for (unsigned char c = 0; c < 128; c++)
+	{
+		// load character glyph 
+		if (FT_Load_Char(face, c, FT_LOAD_RENDER))
+		{
+			std::cout << "ERROR::FREETYTPE: Failed to load Glyph" << std::endl;
+			continue;
+		}
+		// generate texture
+		unsigned int texture;
+		glGenTextures(1, &texture);
+		glBindTexture(GL_TEXTURE_2D, texture);
+		glTexImage2D(
+			GL_TEXTURE_2D,
+			0,
+			GL_RED,
+			face->glyph->bitmap.width,
+			face->glyph->bitmap.rows,
+			0,
+			GL_RED,
+			GL_UNSIGNED_BYTE,
+			face->glyph->bitmap.buffer
+		);
+		// set texture options
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		// now store character for later use
+		Character character = {
+			texture, 
+			glm::ivec2(face->glyph->bitmap.width, face->glyph->bitmap.rows),
+			glm::ivec2(face->glyph->bitmap_left, face->glyph->bitmap_top),
+			(unsigned int) (face->glyph->advance.x)
+		};
+		Characters.insert(pair<char, Character>(c, character));
+	}
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	// Free FreeType once we're finished
+	FT_Done_Face(face);
+	FT_Done_FreeType(library);
+
+	glGenVertexArrays(1, &charVAO);
+    glGenBuffers(1, &charVBO);
+    glBindVertexArray(charVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, charVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 6 * 4, NULL, GL_DYNAMIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+}
+
+void CreateCheckpoints()
+{
+	// Create checkpoints far away from the player, and translate them closer to the player according to the player's speed.
+	
+	checkpoints[0].xPosition = -1.f;
+	checkpoints[0].zPosition = -10.f;
+	checkpoints[0].isYellow = false;
+
+	checkpoints[1].xPosition = 0.f;
+	checkpoints[1].zPosition = -10.f;
+	checkpoints[1].isYellow = false;
+
+	checkpoints[2].xPosition = 1.f;
+	checkpoints[2].zPosition = -10.f;
+	checkpoints[2].isYellow = false;
+
+	// Choose a random checkpoint to be yellow.
+
+	int randomCheckpoint = rand() % 3;
+	checkpoints[randomCheckpoint].isYellow = true;
+
+	// Print all checkpoints to the console.
+	// for (int i = 0; i < 3; i++)
+	// {
+	// 	cout << "Checkpoint " << i+1 << ": " << checkpoints[i].isYellow << endl;
+	// }
+	// std::cout << std::endl;
+
+
+}
+
+int CheckCollision(float xDisplacement)
+{
+	// Check if the player has collided with a checkpoint. If so, return the index of the checkpoint. Otherwise, return -1.
+
+	for (int i = 0; i < 3; i++)
+	{
+		float xDistance = checkpoints[i].xPosition - xDisplacement;
+		float zDistance = checkpoints[i].zPosition - 3.f;
+
+		float distance = sqrt(pow(xDistance, 2) + pow(zDistance, 2));
+
+		if (distance <= checkpointRadius)
+		{
+			return i;
+		}		
+	}
+
+	return -1;
 }
 
 void init()
 {
-	//ParseObj("armadillo.obj");
-	ParseObj("bunny.obj");
+	// Initialize freetype
+	LoadFont("Roboto.ttf");
+
+	// Initialize the bunny
+	bunny = ParseObj("bunny.obj");
+	checkerboard = ParseObj("quad.obj");
+	// checkpoint1 = ParseObj("checkpoint.obj");
+	// checkpoint2 = ParseObj("checkpoint.obj");
+	// checkpoint3 = ParseObj("checkpoint.obj");
+	
 	LoadImage("sky.jpg");
 	CreateCheckpoints();
 
 	glEnable(GL_DEPTH_TEST);
+	// glEnable(GL_BLEND);
+	// glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);  
 	initShaders();
-	initVBO();
+	initVBO(bunny);
+	initVBO(checkerboard);
 }
 
-void drawModel()
-{
-	//glBindBuffer(GL_ARRAY_BUFFER, gVertexAttribBuffer);
-	//glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gIndexBuffer);
-
-	//glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
-	//glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(gVertexDataSizeInBytes));
-
-	glDrawElements(GL_TRIANGLES, gFaces.size() * 3, GL_UNSIGNED_INT, 0);
-}
-
-
-void display()
-{
-	glClearColor(0, 0, 0, 1);
-	glClearDepth(1.0f);
-	glClearStencil(0);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-
+void drawBunny()
+{	
 	float height = cos(speed * 10.f) / 10.f - 2.f;
 	float yRot = (-90. / 180.) * M_PI;
-	float zRot = -1.f;
 	if (inHappyState)
 	{
 		yRot -= remainingTurnAngleHappy / 180.f * M_PI;
@@ -568,9 +708,7 @@ void display()
 	glm::mat4 matYR = glm::rotate<float>(glm::mat4(1.0), yRot, glm::vec3(0.0, 1.0, 0.0)); // Rotate around Y axis to turn back
 	if (isFainting)
 	{
-		speed = 0.f;
-		acceleration = 0.f;
-		zRot = (-90. / 180.) * M_PI;
+		float zRot = (-90. / 180.) * M_PI;
 		glm::mat4 matZR = glm::rotate<float>(glm::mat4(1.0), zRot, glm::vec3(0.0, 0.0, 1.0)); // Rotate around Z axis to fall down
 		modelingMatrix = matT * matS * matZR * matYR; // starting from right side
 	}
@@ -578,14 +716,114 @@ void display()
 		modelingMatrix = matT * matS * matYR; // starting from right side
 
 	// Set the active program and the values of its uniform variables
-	glUseProgram(gProgram[activeProgramIndex]);
-	glUniformMatrix4fv(projectionMatrixLoc[activeProgramIndex], 1, GL_FALSE, glm::value_ptr(projectionMatrix));
-	glUniformMatrix4fv(viewingMatrixLoc[activeProgramIndex], 1, GL_FALSE, glm::value_ptr(viewingMatrix));
-	glUniformMatrix4fv(modelingMatrixLoc[activeProgramIndex], 1, GL_FALSE, glm::value_ptr(modelingMatrix));
-	glUniform3fv(eyePosLoc[activeProgramIndex], 1, glm::value_ptr(eyePos));
+	glUseProgram(gProgram[bunnyProgram]);
+	glUniformMatrix4fv(projectionMatrixLoc[bunnyProgram], 1, GL_FALSE, glm::value_ptr(projectionMatrix));
+	glUniformMatrix4fv(viewingMatrixLoc[bunnyProgram], 1, GL_FALSE, glm::value_ptr(viewingMatrix));
+	glUniformMatrix4fv(modelingMatrixLoc[bunnyProgram], 1, GL_FALSE, glm::value_ptr(modelingMatrix));
+	glUniform3fv(eyePosLoc[bunnyProgram], 1, glm::value_ptr(eyePos));
 
-	// Draw the scene
-	drawModel();
+	glBindBuffer(GL_ARRAY_BUFFER, bunny.vertexAttribBuffer);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bunny.indexBuffer);
+
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(bunny.vertexDataSizeInBytes));
+
+	glDrawElements(GL_TRIANGLES, bunny.faces.size() * 3, GL_UNSIGNED_INT, 0);
+}
+
+void drawCheckerboard()
+{
+	glm::vec3 scale = glm::vec3(5, 0.5, 20);
+	glm::vec3 offset = glm::vec3(0, -2, 0);
+	// Compute the modeling matrix 
+	glm::mat4 matT = glm::translate(glm::mat4(1.0), offset);
+	glm::mat4 matS = glm::scale(glm::mat4(1.0), scale);
+
+	modelingMatrix = matT * matS;
+
+	offset += glm::vec3(0, -1, 0) * timeStamp; // We do this after computing the modeling matrix so that the checkerboard doesn't move with the player but the offset does.
+
+	// Set the active program and the values of its uniform variables
+	glUseProgram(gProgram[checkerboardProgram]);
+	glUniformMatrix4fv(projectionMatrixLoc[checkerboardProgram], 1, GL_FALSE, glm::value_ptr(projectionMatrix));
+	glUniformMatrix4fv(viewingMatrixLoc[checkerboardProgram], 1, GL_FALSE, glm::value_ptr(viewingMatrix));
+	glUniformMatrix4fv(modelingMatrixLoc[checkerboardProgram], 1, GL_FALSE, glm::value_ptr(modelingMatrix));
+	glUniform3fv(eyePosLoc[checkerboardProgram], 1, glm::value_ptr(eyePos));
+
+	glBindBuffer(GL_ARRAY_BUFFER, checkerboard.vertexAttribBuffer);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, checkerboard.indexBuffer);
+
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(checkerboard.vertexDataSizeInBytes));
+
+	glDrawElements(GL_TRIANGLES, checkerboard.faces.size() * 3, GL_UNSIGNED_INT, 0);
+}
+
+void drawCheckpoints()
+{
+
+}
+
+void drawSkybox()
+{
+
+}
+void RenderText(GLuint programId, std::string text, float x, float y, float scale, glm::vec3 color)
+{
+    // activate corresponding render state	
+	glUseProgram(programId);
+    glUniform3f(glGetUniformLocation(programId, "textColor"), color.x, color.y, color.z);
+    glActiveTexture(GL_TEXTURE0);
+    glBindVertexArray(charVAO);
+
+    // iterate through all characters
+    for (string::const_iterator c = text.begin(); c != text.end(); c++)
+    {
+        Character ch = Characters[*c];
+
+        float xpos = x + ch.Bearing.x * scale;
+        float ypos = y - (ch.Size.y - ch.Bearing.y) * scale;
+
+        float w = ch.Size.x * scale;
+        float h = ch.Size.y * scale;
+        // update VBO for each character
+        float vertices[6][4] = {
+            { xpos,     ypos + h,   0.0f, 0.0f },            
+            { xpos,     ypos,       0.0f, 1.0f },
+            { xpos + w, ypos,       1.0f, 1.0f },
+
+            { xpos,     ypos + h,   0.0f, 0.0f },
+            { xpos + w, ypos,       1.0f, 1.0f },
+            { xpos + w, ypos + h,   1.0f, 0.0f }           
+        };
+        // render glyph texture over quad
+        glBindTexture(GL_TEXTURE_2D, ch.TextureID);
+        // update content of VBO memory
+        glBindBuffer(GL_ARRAY_BUFFER, charVBO);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices); 
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        // render quad
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        // now advance cursors for next glyph (note that advance is number of 1/64 pixels)
+        x += (ch.Advance >> 6) * scale; // bitshift by 6 to get value in pixels (2^6 = 64)
+    }
+    glBindVertexArray(0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void drawScore()
+{
+
+}
+
+void display()
+{
+	glClearColor(123, 123, 123, 1);
+	glClearDepth(1.0f);
+	glClearStencil(0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+	drawBunny();
+	drawCheckerboard();
 }
 
 void reshape(GLFWwindow* window, int w, int h)
@@ -608,7 +846,6 @@ void reshape(GLFWwindow* window, int w, int h)
 	// 
 	//viewingMatrix = glm::mat4(1);
 	viewingMatrix = glm::lookAt(glm::vec3(0, 0, 0), glm::vec3(0, 0, 0) + glm::vec3(0, 0, -1), glm::vec3(0, 1, 0));
-
 }
 
 void setHappy()
@@ -620,6 +857,26 @@ void setHappy()
 void setFaint()
 {
 	isFainting = true;
+	speed = 0.f;
+	acceleration = 0.f;
+	moveSpeed = 0.f;
+	turnSpeed = 0.f;
+}
+
+void Reset()
+{
+	displacement = 0.0f;
+	speed = 10.0f;
+	acceleration = 0.01f;
+	moveSpeed = 0.025f;
+	rightPressed = false;
+	leftPressed = false;
+	inHappyState = false;
+	remainingTurnAngleHappy = 0.f;
+	isFainting = false;
+	turnSpeed = 5.f;
+	score = 0;
+	CreateCheckpoints();
 }
 
 void keyboard(GLFWwindow* window, int key, int scancode, int action, int mods)
@@ -640,7 +897,7 @@ void keyboard(GLFWwindow* window, int key, int scancode, int action, int mods)
 				glfwSetWindowShouldClose(window, GL_TRUE);
 				break;
 			case GLFW_KEY_R:
-				// TODO: reset game.
+				Reset();
 				break;
 			case GLFW_KEY_H: // TODO: remove this later
 				setHappy();
@@ -697,6 +954,7 @@ void mainLoop(GLFWwindow* window)
 {
 	while (!glfwWindowShouldClose(window))
 	{
+		timeStamp += 0.01f;
 		checkCollision();
 		calculateValues();
 		display();
@@ -743,20 +1001,19 @@ int main(int argc, char** argv)   // Create Main Function For Bringing It All To
 	char rendererInfo[512] = { 0 };
 
 #if defined(_WIN32) // If defined windows use strcpy_s instead of strcpy and strcat_s inst ead of strcat
-	strcpy_s(rendererInfo, (const char*)glGetString(GL_RENDERER));
-	strcat_s(rendererInfo, " - ");
-	strcat_s(rendererInfo, (const char*)glGetString(GL_VERSION));
+	strcpy(rendererInfo, (const char*)glGetString(GL_RENDERER));
+	strcat(rendererInfo, " - ");
+	strcat(rendererInfo, (const char*)glGetString(GL_VERSION));
 #else
 	strcpy(rendererInfo, (const char*)glGetString(GL_RENDERER));
 	strcat(rendererInfo, " - ");
 	strcat(rendererInfo, (const char*)glGetString(GL_VERSION));
 #endif
 	glfwSetWindowTitle(window, rendererInfo);
-
-	init();
-
 	glfwSetKeyCallback(window, keyboard);
 	glfwSetWindowSizeCallback(window, reshape);
+
+	init();
 
 	reshape(window, width, height); // need to call this once ourselves
 	mainLoop(window); // this does not return unless the window is closed
@@ -766,3 +1023,4 @@ int main(int argc, char** argv)   // Create Main Function For Bringing It All To
 
 	return 0;
 }
+

@@ -586,9 +586,9 @@ int main(int argc, char** argv)   // Create Main Function For Bringing It All To
 	char rendererInfo[512] = { 0 };
 	// If defined windows use strcpy_s instead of strcpy and strcat_s instead of strcat
 #if defined(_WIN32)
-	strcpy_s(rendererInfo, (const char*)glGetString(GL_RENDERER));
-	strcat_s(rendererInfo, " - ");
-	strcat_s(rendererInfo, (const char*)glGetString(GL_VERSION));
+	strcpy(rendererInfo, (const char*)glGetString(GL_RENDERER));
+	strcat(rendererInfo, " - ");
+	strcat(rendererInfo, (const char*)glGetString(GL_VERSION));
 #else
 	strcpy(rendererInfo, (const char*)glGetString(GL_RENDERER));
 	strcat(rendererInfo, " - ");
