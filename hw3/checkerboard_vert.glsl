@@ -8,9 +8,9 @@
 
 vec3 I = vec3(1, 1, 1);          // point light intensity
 vec3 Iamb = vec3(0.8, 0.8, 0.8); // ambient light intensity
-vec3 kd = vec3(0.2, 0.5, 0.5);     // diffuse reflectance coefficient
-vec3 ka = vec3(0.3, 0.3, 0.3);   // ambient reflectance coefficient
-vec3 ks = vec3(0.8, 0.8, 0.8);   // specular reflectance coefficient
+vec3 kd = vec3(0,0,0);     // diffuse reflectance coefficient
+vec3 ka = vec3(0, 0, 1);   // ambient reflectance coefficient
+vec3 ks = vec3(0,0,0);   // specular reflectance coefficient
 vec3 lightPos = vec3(5, 5, 5);   // light position in world coordinates
 
 uniform mat4 modelingMatrix;
@@ -18,10 +18,11 @@ uniform mat4 viewingMatrix;
 uniform mat4 projectionMatrix;
 uniform vec3 eyePos;
 
-layout(location=0) in vec3 inVertex;
-layout(location=1) in vec3 inNormal;
+layout(location=0) in vec3 inVertex; // This variable will contain the vertex position attribute from the vertex shader.
+layout(location=1) in vec3 inNormal; // This variable will contain the vertex normal attribute from the vertex shader.
 
 out vec4 color;
+out vec4 fragPos;
 
 void main(void)
 {
@@ -47,7 +48,6 @@ void main(void)
 	float NdotH = dot(N, H); // for specular component
 
 	vec3 diffuseColor = I * kd * max(0, NdotL);
-	vec3 specularColor = I * ks * pow(max(0, NdotH), 100);
 	vec3 ambientColor = Iamb * ka;
 
 	// We update the front color of the vertex. This value will be sent
@@ -55,11 +55,13 @@ void main(void)
 	// Front color specifies the color of a vertex for a front facing
 	// primitive.
 
-	color = vec4(diffuseColor + specularColor + ambientColor, 1);
+	color = vec4(diffuseColor + ambientColor, 1);
 
 	// Transform the vertex with the product of the projection, viewing, and
 	// modeling matrices.
 
     gl_Position = projectionMatrix * viewingMatrix * modelingMatrix * vec4(inVertex, 1);
+
+	fragPos = pWorld;
 }
 

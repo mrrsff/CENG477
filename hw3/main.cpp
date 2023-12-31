@@ -166,6 +166,10 @@ float turnSpeed = 5.f;
 float score = 0;
 float checkpointRadius = 0.1f; // This is the radius of the checkpoint. If the player is within this radius, then they have reached the checkpoint.
 float timeStamp = 0.f;
+bool pause = false;
+int checkerboardXRot = 45;
+int checkerboardYRot = 0;
+int checkerboardZRot = 90;
 
 Object ParseObj(const string& fileName)
 {
@@ -354,6 +358,8 @@ GLuint createFS(const char* shaderName)
 
 void initShaders()
 {
+	GLint status;
+
 	// Create the programs
 	gProgram.resize(6);
 
@@ -366,7 +372,6 @@ void initShaders()
 
 	GLuint vs1 = createVS("bunny_vert.glsl");
 	GLuint fs1 = createFS("bunny_frag.glsl");
-
 	// Attach the shaders to the programs
 	glAttachShader(gProgram[0], vs1);
 	glAttachShader(gProgram[0], fs1);
@@ -382,9 +387,6 @@ void initShaders()
 	glAttachShader(gProgram[1], fs2);
 
 	checkerboardProgram = 1;
-
-	checkerboardScaleLoc = glGetUniformLocation(gProgram[1], "scale");
-	checkerboardOffsetLoc = glGetUniformLocation(gProgram[1], "offset");
 
 	// Create the shaders for the skybox program
 	GLuint vs3 = createVS("skybox_vert.glsl");
@@ -427,19 +429,17 @@ void initShaders()
 	glyphProgram = 5;
 
 	// Link the programs
-	GLint status;
-
 	for (int i = 0; i < gProgram.size(); ++i)
 	{
 		glLinkProgram(gProgram[i]);
 		glGetProgramiv(gProgram[i], GL_LINK_STATUS, &status);
-
-		if (status != GL_TRUE)
+		if (status == GL_FALSE)
 		{
-			cout << "Program " << i << " link failed" << endl;
+			cout << "Failed to link shader program!" << endl;
 			exit(-1);
 		}
 	}
+
 
 	// Get the locations of the uniform variables from both programs
 	modelingMatrixLoc.resize(gProgram.size());
@@ -454,6 +454,8 @@ void initShaders()
 		projectionMatrixLoc[i] = glGetUniformLocation(gProgram[i], "projectionMatrix");
 		eyePosLoc[i] = glGetUniformLocation(gProgram[i], "eyePos");
 	}
+	checkerboardScaleLoc = glGetUniformLocation(gProgram[checkerboardProgram], "scale");
+	checkerboardOffsetLoc = glGetUniformLocation(gProgram[checkerboardProgram], "offset");
 }
 
 void initVBO(Object& obj)
@@ -487,6 +489,13 @@ void initVBO(Object& obj)
 
 	glBindBuffer(GL_ARRAY_BUFFER, obj.vertexAttribBuffer); // make it active, it is an array buffer
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, obj.indexBuffer); // make it active, it is an element array buffer
+
+	err = glGetError();
+	if (err != GL_NONE)
+	{
+		cout << "Error occurred when binding VBOs for " << obj.name << ", error = " << err << endl;
+		error = true;
+	}
 
 	obj.vertexDataSizeInBytes = obj.vertices.size() * 3 * sizeof(GLfloat); // number of vertices * 3 coordinates * size of GLfloat
 	obj.normalDataSizeInBytes = obj.normals.size() * 3 * sizeof(GLfloat); // number of normals * 3 coordinates * size of GLfloat
@@ -524,6 +533,13 @@ void initVBO(Object& obj)
 	glBufferSubData(GL_ARRAY_BUFFER, obj.vertexDataSizeInBytes, obj.normalDataSizeInBytes, normalData); // write the normal data starting from offset vertexDataSizeInBytes
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, indexDataSizeInBytes, indexData, GL_STATIC_DRAW); // allocate space and write the index data to the buffer object
 
+	err = glGetError();
+	if (err != GL_NONE)
+	{
+		cout << "Error occurred when copying data to VBOs for " << obj.name << ", error = " << err << endl;
+		error = true;
+	}
+
 	// done copying to GPU memory; can free now from CPU memory
 	delete[] vertexData;
 	delete[] normalData;
@@ -531,6 +547,13 @@ void initVBO(Object& obj)
 
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0); // specify the vertex attributes (coordinates) in the buffer
 	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(obj.vertexDataSizeInBytes)); // specify the vertex attributes (normals) in the buffer
+
+	err = glGetError();
+	if (err != GL_NONE)
+	{
+		cout << "Error occurred when setting vertex attribute pointers for " << obj.name << ", error = " << err << endl;
+		error = true;
+	}
 
 	if (error)
 	{
@@ -641,8 +664,6 @@ void CreateCheckpoints()
 	// 	cout << "Checkpoint " << i+1 << ": " << checkpoints[i].isYellow << endl;
 	// }
 	// std::cout << std::endl;
-
-
 }
 
 int CheckCollision(float xDisplacement)
@@ -673,9 +694,9 @@ void init()
 	// Initialize the bunny
 	bunny = ParseObj("bunny.obj");
 	checkerboard = ParseObj("quad.obj");
-	// checkpoint1 = ParseObj("checkpoint.obj");
-	// checkpoint2 = ParseObj("checkpoint.obj");
-	// checkpoint3 = ParseObj("checkpoint.obj");
+	checkpoint1 = ParseObj("checkpoint.obj");
+	checkpoint2 = ParseObj("checkpoint.obj");
+	checkpoint3 = ParseObj("checkpoint.obj");
 	
 	LoadImage("sky.jpg");
 	CreateCheckpoints();
@@ -684,8 +705,11 @@ void init()
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);  
 	initShaders();
-	initVBO(bunny);
 	initVBO(checkerboard);
+	initVBO(bunny);
+	initVBO(checkpoint1);
+	initVBO(checkpoint2);
+	initVBO(checkpoint3);
 }
 
 void drawBunny()
@@ -715,13 +739,15 @@ void drawBunny()
 	else
 		modelingMatrix = matT * matS * matYR; // starting from right side
 
-	// Set the active program and the values of its uniform variables
+	// Set the active program and the values of its uniform variables	
 	glUseProgram(gProgram[bunnyProgram]);
 	glUniformMatrix4fv(projectionMatrixLoc[bunnyProgram], 1, GL_FALSE, glm::value_ptr(projectionMatrix));
 	glUniformMatrix4fv(viewingMatrixLoc[bunnyProgram], 1, GL_FALSE, glm::value_ptr(viewingMatrix));
 	glUniformMatrix4fv(modelingMatrixLoc[bunnyProgram], 1, GL_FALSE, glm::value_ptr(modelingMatrix));
 	glUniform3fv(eyePosLoc[bunnyProgram], 1, glm::value_ptr(eyePos));
 
+	// Bind the VBOs and VAO
+	glBindVertexArray(bunny.vao);
 	glBindBuffer(GL_ARRAY_BUFFER, bunny.vertexAttribBuffer);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bunny.indexBuffer);
 
@@ -729,34 +755,46 @@ void drawBunny()
 	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(bunny.vertexDataSizeInBytes));
 
 	glDrawElements(GL_TRIANGLES, bunny.faces.size() * 3, GL_UNSIGNED_INT, 0);
+
+	glBindVertexArray(0);
 }
 
 void drawCheckerboard()
 {
-	glm::vec3 scale = glm::vec3(5, 0.5, 20);
-	glm::vec3 offset = glm::vec3(0, -2, 0);
+	glm::vec3 scale = glm::vec3(3, 1, 20);
+	glm::vec3 offset = glm::vec3(0, -2.5f, 0);
 	// Compute the modeling matrix 
 	glm::mat4 matT = glm::translate(glm::mat4(1.0), offset);
 	glm::mat4 matS = glm::scale(glm::mat4(1.0), scale);
+	// Rotate so that the checkerboard is on the xz plane
+	glm::mat4 matXR = glm::rotate<float>(glm::mat4(1.0), (checkerboardXRot / 180.) * M_PI, glm::vec3(1.0, 0.0, 0.0));
+	glm::mat4 matYR = glm::rotate<float>(glm::mat4(1.0), (checkerboardYRot / 180.) * M_PI, glm::vec3(0.0, 1.0, 0.0));
+	glm::mat4 matZR = glm::rotate<float>(glm::mat4(1.0), (checkerboardZRot / 180.) * M_PI, glm::vec3(0.0, 0.0, 1.0));
+	modelingMatrix = matT * matS * matXR * matYR * matZR;
 
-	modelingMatrix = matT * matS;
+	offset.z += -0.01f * timeStamp * speed; // We do this after computing the modeling matrix so that the checkerboard doesn't actually move but the fragment shader will move the texture.
 
-	offset += glm::vec3(0, -1, 0) * timeStamp; // We do this after computing the modeling matrix so that the checkerboard doesn't move with the player but the offset does.
-
-	// Set the active program and the values of its uniform variables
+	// Set the active program and the values of its uniform variables	
 	glUseProgram(gProgram[checkerboardProgram]);
 	glUniformMatrix4fv(projectionMatrixLoc[checkerboardProgram], 1, GL_FALSE, glm::value_ptr(projectionMatrix));
 	glUniformMatrix4fv(viewingMatrixLoc[checkerboardProgram], 1, GL_FALSE, glm::value_ptr(viewingMatrix));
 	glUniformMatrix4fv(modelingMatrixLoc[checkerboardProgram], 1, GL_FALSE, glm::value_ptr(modelingMatrix));
 	glUniform3fv(eyePosLoc[checkerboardProgram], 1, glm::value_ptr(eyePos));
+	glUniform3fv(checkerboardScaleLoc, 1, glm::value_ptr(scale));
+	glUniform1f(checkerboardOffsetLoc, offset.z);
 
+	// Bind the VBOs and VAO
+	glBindVertexArray(checkerboard.vao);
 	glBindBuffer(GL_ARRAY_BUFFER, checkerboard.vertexAttribBuffer);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, checkerboard.indexBuffer);
 
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
 	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(checkerboard.vertexDataSizeInBytes));
 
+	
 	glDrawElements(GL_TRIANGLES, checkerboard.faces.size() * 3, GL_UNSIGNED_INT, 0);
+
+	glBindVertexArray(0);
 }
 
 void drawCheckpoints()
@@ -818,12 +856,14 @@ void drawScore()
 
 void display()
 {
-	glClearColor(123, 123, 123, 1);
-	glClearDepth(1.0f);
+	if (pause) return;
+	glClearColor(0.3, 0.5, 0.3, 1);
+	glClearDepth(10.0f);
 	glClearStencil(0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-	drawBunny();
 	drawCheckerboard();
+	drawBunny();
+	drawCheckpoints();
 }
 
 void reshape(GLFWwindow* window, int w, int h)
@@ -885,6 +925,14 @@ void keyboard(GLFWwindow* window, int key, int scancode, int action, int mods)
 	{
 		switch (key)
 		{
+			case GLFW_KEY_UP:
+			case GLFW_KEY_W:
+				eyePos.z -= 1.f;
+				break;
+			case GLFW_KEY_DOWN:
+			case GLFW_KEY_S:
+				eyePos.z += 1.f;
+				break;
 			case GLFW_KEY_RIGHT:
 			case GLFW_KEY_D:
 				rightPressed = true;
@@ -905,6 +953,24 @@ void keyboard(GLFWwindow* window, int key, int scancode, int action, int mods)
 			case GLFW_KEY_F: // TODO: remove this later
 				setFaint();
 				break;
+			case GLFW_KEY_P:
+				pause = !pause;
+				break;
+			// case GLFW_KEY_X:
+			// 	checkerboardXRot += 45;
+			// 	checkerboardXRot %= 360;
+			// 	cout << "Checkerboard total rotation: " << checkerboardXRot << " " << checkerboardYRot << " " << checkerboardZRot << endl;
+			// 	break;
+			// case GLFW_KEY_Y:
+			// 	checkerboardYRot += 45;
+			// 	checkerboardYRot %= 360;
+			// 	cout << "Checkerboard total rotation: " << checkerboardXRot << " " << checkerboardYRot << " " << checkerboardZRot << endl;
+			// 	break;
+			// case GLFW_KEY_Z:
+			// 	checkerboardZRot += 45;
+			// 	checkerboardZRot %= 360;
+			// 	cout << "Checkerboard total rotation: " << checkerboardXRot << " " << checkerboardYRot << " " << checkerboardZRot << endl;
+			// 	break;
 		}
 	}
 	else if (action == GLFW_RELEASE)
@@ -955,11 +1021,11 @@ void mainLoop(GLFWwindow* window)
 	while (!glfwWindowShouldClose(window))
 	{
 		timeStamp += 0.01f;
-		checkCollision();
-		calculateValues();
 		display();
 		glfwSwapBuffers(window);
 		glfwPollEvents();
+		checkCollision();
+		calculateValues();
 	}
 }
 
@@ -980,7 +1046,7 @@ int main(int argc, char** argv)   // Create Main Function For Bringing It All To
 	//glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // uncomment this if on MacOS
 
 	int width = 1000, height = 800;
-	window = glfwCreateWindow(width, height, "Simple Example", NULL, NULL);
+	window = glfwCreateWindow(width, height, "CEGN477 HW3 Bunny Run", NULL, NULL);
 
 	if (!window)
 	{
