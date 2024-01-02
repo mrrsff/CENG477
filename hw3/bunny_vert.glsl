@@ -8,10 +8,17 @@
 
 vec3 I = vec3(1, 1, 1);          // point light intensity
 vec3 Iamb = vec3(0.8, 0.8, 0.8); // ambient light intensity
+<<<<<<< HEAD
 vec3 kd = vec3(1, 0.8, 0.2);     // diffuse reflectance coefficient
 vec3 ka = vec3(0.25, 0.2, 0.05);   // ambient reflectance coefficient
 vec3 ks = vec3(1,1,1);   // specular reflectance coefficient
 vec3 lightPos = vec3(0, 5, -2);   // light position in world coordinates
+=======
+vec3 kd = vec3(1, 1, 0.2);     // diffuse reflectance coefficient
+vec3 ka = vec3(0.2, 0.2, 0.2);   // ambient reflectance coefficient
+vec3 ks = vec3(1,1,1);   // specular reflectance coefficient
+vec3 lightPos = vec3(0, 5, 0);   // light position in world coordinates
+>>>>>>> 339b027af9adc05e89730ba66f9008772af30c9d
 
 uniform mat4 modelingMatrix;
 uniform mat4 viewingMatrix;
