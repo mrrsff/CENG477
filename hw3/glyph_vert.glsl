@@ -4,6 +4,11 @@ out vec2 TexCoords;
 
 uniform mat4 projection;
 
+uniform mat4 modelingMatrix;
+uniform mat4 viewingMatrix;
+uniform mat4 projectionMatrix;
+uniform vec3 eyePos;
+
 void main()
 {
     gl_Position = projection * vec4(vertex.xy, 0.0, 1.0);

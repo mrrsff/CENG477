@@ -49,6 +49,7 @@ vector<GLint> eyePosLoc;
 GLfloat checkerboardScaleLoc, checkerboardOffsetLoc;
 
 glm::mat4 projectionMatrix;
+glm::mat4 orthoProjectionMatrix;
 glm::mat4 viewingMatrix;
 glm::mat4 modelingMatrix;
 glm::vec3 eyePos(0, 0, 0);
@@ -87,13 +88,7 @@ struct Face
 	GLuint vIndex[3], tIndex[3], nIndex[3];
 };
 
-struct Image
-{
-	int width, height, channels;
-	unsigned char* data;
-} skybox;
-
-struct Character {
+struct Character { 
     unsigned int TextureID;  // ID handle of the glyph texture
     glm::ivec2   Size;       // Size of glyph
     glm::ivec2   Bearing;    // Offset from baseline to left/top of glyph
@@ -113,6 +108,7 @@ struct Object
 	GLuint vertexAttribBuffer, indexBuffer; // vbo's
 	GLint inVertexLoc, inNormalLoc; // attribute locations
 	GLuint vao; // vertex array object
+	GLuint textureID; // texture object
 	int vertexDataSizeInBytes, normalDataSizeInBytes;
 
 	Object() {
@@ -142,21 +138,34 @@ struct Object
 	}
 };
 
-struct Checkpoint
-{
-	GLfloat xPosition, zPosition;
-	GLboolean isYellow, rendered;
-} checkpoints[3];
-
 Object bunny;
 Object checkpoint1, checkpoint2, checkpoint3;
 Object checkerboard;
+Object skyboxObj;
+
+struct Checkpoint
+{
+	GLfloat xPosition, zPosition;
+	GLboolean isYellow, active;
+	Object& obj = checkpoint1;
+
+	friend ostream& operator<<(ostream& os, const Checkpoint& obj)
+	{
+		os << "xPosition: " << obj.xPosition << endl;
+		os << "zPosition: " << obj.zPosition << endl;
+		os << "isYellow: " << obj.isYellow << endl;
+		os << "active: " << obj.active << endl;
+		os << "obj: " << obj.obj << endl;
+		return os;
+	}
+} checkpoints[3];
+
 
 // Game variables
 float displacement = 0.0f;
 float speed = 10.0f;
-float acceleration = 0.01f;
-float moveSpeed = 0.025f;
+float acceleration = 0.003f;
+float horizontalMoveSpeed = 0.05f;
 bool rightPressed = false;
 bool leftPressed = false;
 bool inHappyState = false;
@@ -164,12 +173,13 @@ float remainingTurnAngleHappy = 0.f;
 bool isFainting = false;
 float turnSpeed = 5.f;
 float score = 0;
-float checkpointRadius = 0.1f; // This is the radius of the checkpoint. If the player is within this radius, then they have reached the checkpoint.
+float checkpointRadius = 0.5f; // This is the radius of the checkpoint. If the player is within this radius, then they have reached the checkpoint.
 float timeStamp = 0.f;
 bool pause = false;
-int checkerboardXRot = 45;
-int checkerboardYRot = 0;
-int checkerboardZRot = 90;
+int checkerboardXRot = 90;
+int checkerboardYRot = 180;
+int checkerboardZRot = 0;
+float checkerboardZOffset = 0.f;
 
 Object ParseObj(const string& fileName)
 {
@@ -252,6 +262,11 @@ Object ParseObj(const string& fileName)
 
 		myfile.close();
 	}
+	else 
+	{
+		cout << "Unable to open file";
+		assert(false);
+	}
 
 	assert(obj.vertices.size() == obj.normals.size());
 	return obj;
@@ -290,20 +305,14 @@ bool ReadDataFromFile( const string& fileName, string& data)
 void LoadImage(const string& fileName)
 {
 	int width, height, channels;
-	unsigned char* data = stbi_load(fileName.c_str(), &width, &height, &channels, 0);
+	unsigned char* data = stbi_load(fileName.c_str(), &width, &height, &channels, STBI_rgb);
 
-	if (data)
-	{
-		skybox.width = width;
-		skybox.height = height;
-		skybox.channels = channels;
-		skybox.data = data;
-	}
-	else
-	{
-		cout << "Cannot load skybox: " << fileName << endl;
-		exit(-1);
-	}
+	// Set up the textures
+	glGenTextures(1, &skyboxObj.textureID);
+	glBindTexture(GL_TEXTURE_2D, skyboxObj.textureID);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+
+	stbi_image_free(data);
 }
 
 GLuint createVS(const char* shaderName)
@@ -369,7 +378,6 @@ void initShaders()
 	}
 
 	// Create the shaders for both programs
-
 	GLuint vs1 = createVS("bunny_vert.glsl");
 	GLuint fs1 = createFS("bunny_frag.glsl");
 	// Attach the shaders to the programs
@@ -435,11 +443,10 @@ void initShaders()
 		glGetProgramiv(gProgram[i], GL_LINK_STATUS, &status);
 		if (status == GL_FALSE)
 		{
-			cout << "Failed to link shader program!" << endl;
+			cout << "Failed to link shader program " << i << endl;
 			exit(-1);
 		}
 	}
-
 
 	// Get the locations of the uniform variables from both programs
 	modelingMatrixLoc.resize(gProgram.size());
@@ -555,6 +562,10 @@ void initVBO(Object& obj)
 		error = true;
 	}
 
+	glBindVertexArray(0); // unbind the VAO
+	glBindBuffer(GL_ARRAY_BUFFER, 0); // unbind the VBO
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0); // unbind the VBO
+
 	if (error)
 	{
 		cout << "VBO initialization failed for " << obj.name << endl;
@@ -626,6 +637,7 @@ void LoadFont(const char* path)
 	FT_Done_Face(face);
 	FT_Done_FreeType(library);
 
+	// configure VAO/VBO for texture quads
 	glGenVertexArrays(1, &charVAO);
     glGenBuffers(1, &charVBO);
     glBindVertexArray(charVAO);
@@ -641,29 +653,27 @@ void CreateCheckpoints()
 {
 	// Create checkpoints far away from the player, and translate them closer to the player according to the player's speed.
 	
-	checkpoints[0].xPosition = -1.f;
-	checkpoints[0].zPosition = -10.f;
+	checkpoints[0].xPosition = -1.75f;
+	checkpoints[0].zPosition = -20.f;
 	checkpoints[0].isYellow = false;
+	checkpoints[0].active = true;
+	checkpoints[0].obj = checkpoint1;
 
 	checkpoints[1].xPosition = 0.f;
-	checkpoints[1].zPosition = -10.f;
+	checkpoints[1].zPosition = -20.f;
 	checkpoints[1].isYellow = false;
+	checkpoints[1].active = true;
+	checkpoints[1].obj = checkpoint2;
 
-	checkpoints[2].xPosition = 1.f;
-	checkpoints[2].zPosition = -10.f;
+	checkpoints[2].xPosition = 1.75f;
+	checkpoints[2].zPosition = -20.f;
 	checkpoints[2].isYellow = false;
+	checkpoints[2].active = true;
+	checkpoints[2].obj = checkpoint3;
 
 	// Choose a random checkpoint to be yellow.
-
 	int randomCheckpoint = rand() % 3;
 	checkpoints[randomCheckpoint].isYellow = true;
-
-	// Print all checkpoints to the console.
-	// for (int i = 0; i < 3; i++)
-	// {
-	// 	cout << "Checkpoint " << i+1 << ": " << checkpoints[i].isYellow << endl;
-	// }
-	// std::cout << std::endl;
 }
 
 int CheckCollision(float xDisplacement)
@@ -672,15 +682,15 @@ int CheckCollision(float xDisplacement)
 
 	for (int i = 0; i < 3; i++)
 	{
+		if (checkpoints[i].active == false) continue;
+
 		float xDistance = checkpoints[i].xPosition - xDisplacement;
-		float zDistance = checkpoints[i].zPosition - 3.f;
-
-		float distance = sqrt(pow(xDistance, 2) + pow(zDistance, 2));
-
+		float zDistance = checkpoints[i].zPosition + 1.75f;
+		float distance = sqrt(xDistance * xDistance + zDistance * zDistance);
 		if (distance <= checkpointRadius)
 		{
 			return i;
-		}		
+		}	
 	}
 
 	return -1;
@@ -689,32 +699,41 @@ int CheckCollision(float xDisplacement)
 void init()
 {
 	// Initialize freetype
-	LoadFont("Roboto.ttf");
+	LoadFont("Antonio.ttf");
 
 	// Initialize the bunny
 	bunny = ParseObj("bunny.obj");
 	checkerboard = ParseObj("quad.obj");
-	checkpoint1 = ParseObj("checkpoint.obj");
-	checkpoint2 = ParseObj("checkpoint.obj");
-	checkpoint3 = ParseObj("checkpoint.obj");
+	checkpoint1 = ParseObj("cube.obj");
+	checkpoint2 = ParseObj("cube.obj");
+	checkpoint3 = ParseObj("cube.obj");
+	skyboxObj = ParseObj("quad.obj");
 	
 	LoadImage("sky.jpg");
-	CreateCheckpoints();
 
 	glEnable(GL_DEPTH_TEST);
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);  
+	// glEnable(GL_CULL_FACE);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	initShaders();
 	initVBO(checkerboard);
 	initVBO(bunny);
 	initVBO(checkpoint1);
 	initVBO(checkpoint2);
 	initVBO(checkpoint3);
+	initVBO(skyboxObj);
+
+	CreateCheckpoints();
+
+	// Set up the projection matrix for the glyphs.
+	orthoProjectionMatrix = glm::ortho(0.0f, static_cast<float>(gWidth), 0.0f, static_cast<float>(gHeight));
+	glUseProgram(gProgram[glyphProgram]);
+	glUniformMatrix4fv(glGetUniformLocation(gProgram[glyphProgram], "projection"), 1, GL_FALSE, glm::value_ptr(orthoProjectionMatrix));
 }
 
 void drawBunny()
 {	
-	float height = cos(speed * 10.f) / 10.f - 2.f;
+	float height = cos(speed * 150.f) / 10.f - 1.35f;
 	float yRot = (-90. / 180.) * M_PI;
 	if (inHappyState)
 	{
@@ -726,9 +745,11 @@ void drawBunny()
 		}
 	}
 
+	glm::vec3 scale = glm::vec3(1, 1, 1);
+	scale *= 0.25f;
 	// Compute the modeling matrix 
-	glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(displacement, height, -3.f)); // Translate to the right and down
-	glm::mat4 matS = glm::scale(glm::mat4(1.0), glm::vec3(0.5, 0.5, 0.5)); // Scale down by 50%
+	glm::mat4 matT = glm::translate(glm::mat4(1.0), glm::vec3(displacement, height, -1.75f)); // Translate to the right and down
+	glm::mat4 matS = glm::scale(glm::mat4(1.0), scale); // Scale down by 50%
 	glm::mat4 matYR = glm::rotate<float>(glm::mat4(1.0), yRot, glm::vec3(0.0, 1.0, 0.0)); // Rotate around Y axis to turn back
 	if (isFainting)
 	{
@@ -761,8 +782,9 @@ void drawBunny()
 
 void drawCheckerboard()
 {
+	// Set up the values of the modeling matrix for the checkerboard.
 	glm::vec3 scale = glm::vec3(3, 1, 20);
-	glm::vec3 offset = glm::vec3(0, -2.5f, 0);
+	glm::vec3 offset = glm::vec3(0, -1.5f, -10.f);
 	// Compute the modeling matrix 
 	glm::mat4 matT = glm::translate(glm::mat4(1.0), offset);
 	glm::mat4 matS = glm::scale(glm::mat4(1.0), scale);
@@ -772,7 +794,8 @@ void drawCheckerboard()
 	glm::mat4 matZR = glm::rotate<float>(glm::mat4(1.0), (checkerboardZRot / 180.) * M_PI, glm::vec3(0.0, 0.0, 1.0));
 	modelingMatrix = matT * matS * matXR * matYR * matZR;
 
-	offset.z += -0.01f * timeStamp * speed; // We do this after computing the modeling matrix so that the checkerboard doesn't actually move but the fragment shader will move the texture.
+	// We do this after computing the modeling matrix so that the checkerboard doesn't actually move but the fragment shader will move the texture.
+	offset.z = -checkerboardZOffset * 2;
 
 	// Set the active program and the values of its uniform variables	
 	glUseProgram(gProgram[checkerboardProgram]);
@@ -799,12 +822,74 @@ void drawCheckerboard()
 
 void drawCheckpoints()
 {
+	for (int i = 0; i < 3; i++)
+	{
+		if (checkpoints[i].active == false) continue;
+		
+		// Set up the values of the modeling matrix for the yellow checkpoints.
+		glm::vec3 offset = glm::vec3(checkpoints[i].xPosition, -0.75f, checkpoints[i].zPosition);
+		glm::vec3 scale = glm::vec3(0.25f,0.5f,0.25f);
 
+		// Compute the modeling matrix 
+		glm::mat4 matT = glm::translate(glm::mat4(1.0), offset);
+		glm::mat4 matS = glm::scale(glm::mat4(1.0), scale);
+		modelingMatrix = matT * matS;
+		
+		int program = checkpoints[i].isYellow ? yellowCheckpointsProgram : redCheckpointsProgram;
+		
+		// Set the active program and the values of its uniform variables
+		glUseProgram(gProgram[program]);
+		assert(glGetError() == GL_NONE);
+		glUniformMatrix4fv(projectionMatrixLoc[program], 1, GL_FALSE, glm::value_ptr(projectionMatrix));
+		glUniformMatrix4fv(viewingMatrixLoc[program], 1, GL_FALSE, glm::value_ptr(viewingMatrix));
+		glUniformMatrix4fv(modelingMatrixLoc[program], 1, GL_FALSE, glm::value_ptr(modelingMatrix));
+		glUniform3fv(eyePosLoc[program], 1, glm::value_ptr(eyePos));
+
+		// Bind the VBOs and VAO
+		glBindVertexArray(checkpoints[i].obj.vao);
+		glBindBuffer(GL_ARRAY_BUFFER, checkpoints[i].obj.vertexAttribBuffer);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, checkpoints[i].obj.indexBuffer);
+
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(checkpoints[i].obj.vertexDataSizeInBytes));
+		
+		glDrawElements(GL_TRIANGLES, checkpoints[i].obj.faces.size() * 3, GL_UNSIGNED_INT, 0);
+
+		glBindVertexArray(0);
+	}
 }
 
 void drawSkybox()
 {
+	// Set up the values of the modeling matrix for the skybox.
+	glm::vec3 scale = glm::vec3(100, 100, 100);
+	glm::vec3 offset = glm::vec3(0, 0, -50.f);
+	// Compute the modeling matrix 
+	glm::mat4 matT = glm::translate(glm::mat4(1.0), offset);
+	glm::mat4 matS = glm::scale(glm::mat4(1.0), scale);
+	modelingMatrix = matT * matS;
 
+	// Set the active program and the values of its uniform variables	
+	glUseProgram(gProgram[skyboxProgram]);
+	glUniformMatrix4fv(projectionMatrixLoc[skyboxProgram], 1, GL_FALSE, glm::value_ptr(orthoProjectionMatrix));
+	glUniformMatrix4fv(viewingMatrixLoc[skyboxProgram], 1, GL_FALSE, glm::value_ptr(viewingMatrix));
+	glUniformMatrix4fv(modelingMatrixLoc[skyboxProgram], 1, GL_FALSE, glm::value_ptr(modelingMatrix));
+	glUniform3fv(eyePosLoc[skyboxProgram], 1, glm::value_ptr(eyePos));
+
+	// Bind the VBOs and VAO
+	glBindVertexArray(skyboxObj.vao);
+	glBindBuffer(GL_ARRAY_BUFFER, skyboxObj.vertexAttribBuffer);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, skyboxObj.indexBuffer);
+
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(skyboxObj.vertexDataSizeInBytes));
+
+	glActiveTexture(GL_TEXTURE0);
+	// glBindTexture(GL_TEXTURE_2D, skybox.texture);
+	glDrawElements(GL_TRIANGLES, skyboxObj.faces.size() * 3, GL_UNSIGNED_INT, 0);
+
+	glBindVertexArray(0);
+	glBindTexture(GL_TEXTURE_2D, 0);
 }
 void RenderText(GLuint programId, std::string text, float x, float y, float scale, glm::vec3 color)
 {
@@ -851,19 +936,20 @@ void RenderText(GLuint programId, std::string text, float x, float y, float scal
 
 void drawScore()
 {
-
+	RenderText(gProgram[glyphProgram], "Score: " + to_string(score), 10.f, 10.f, 5.f, glm::vec3(1,1,1));
 }
 
 void display()
 {
-	if (pause) return;
 	glClearColor(0.3, 0.5, 0.3, 1);
-	glClearDepth(10.0f);
+	glClearDepth(1.f);
 	glClearStencil(0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+	drawSkybox();
+	drawCheckpoints();
 	drawCheckerboard();
 	drawBunny();
-	drawCheckpoints();
+	drawScore();
 }
 
 void reshape(GLFWwindow* window, int w, int h)
@@ -880,6 +966,9 @@ void reshape(GLFWwindow* window, int w, int h)
 	float fovyRad = (float)(90.0 / 180.0) * M_PI;
 	projectionMatrix = glm::perspective(fovyRad, w / (float)h, 1.0f, 100.0f);
 
+	// Use orthographic projection for the glyphs
+	orthoProjectionMatrix = glm::ortho(0.0f, static_cast<float>(w), 0.0f, static_cast<float>(h));
+
 	// Assume default camera position and orientation (camera is at
 	// (0, 0, 0) with looking at -z direction and its up vector pointing
 	// at +y direction)
@@ -892,6 +981,7 @@ void setHappy()
 {
 	inHappyState = true;
 	remainingTurnAngleHappy = 360.f;
+	score += 5;
 }
 
 void setFaint()
@@ -899,22 +989,22 @@ void setFaint()
 	isFainting = true;
 	speed = 0.f;
 	acceleration = 0.f;
-	moveSpeed = 0.f;
+	horizontalMoveSpeed = 0.f;
 	turnSpeed = 0.f;
 }
 
 void Reset()
 {
-	displacement = 0.0f;
+	isFainting = false;
 	speed = 10.0f;
-	acceleration = 0.01f;
-	moveSpeed = 0.025f;
+	horizontalMoveSpeed = 0.05f;
+	acceleration = 0.003f;
+	turnSpeed = 5.f;
 	rightPressed = false;
 	leftPressed = false;
 	inHappyState = false;
 	remainingTurnAngleHappy = 0.f;
-	isFainting = false;
-	turnSpeed = 5.f;
+	displacement = 0.0f;
 	score = 0;
 	CreateCheckpoints();
 }
@@ -925,14 +1015,14 @@ void keyboard(GLFWwindow* window, int key, int scancode, int action, int mods)
 	{
 		switch (key)
 		{
-			case GLFW_KEY_UP:
-			case GLFW_KEY_W:
-				eyePos.z -= 1.f;
-				break;
-			case GLFW_KEY_DOWN:
-			case GLFW_KEY_S:
-				eyePos.z += 1.f;
-				break;
+			// case GLFW_KEY_UP:
+			// case GLFW_KEY_W:
+			// 	eyePos.z -= 1.f;
+			// 	break;
+			// case GLFW_KEY_DOWN:
+			// case GLFW_KEY_S:
+			// 	eyePos.z += 1.f;
+			// 	break;
 			case GLFW_KEY_RIGHT:
 			case GLFW_KEY_D:
 				rightPressed = true;
@@ -992,38 +1082,47 @@ void keyboard(GLFWwindow* window, int key, int scancode, int action, int mods)
 void calculateValues(){
 	if (rightPressed)
 	{
-		displacement = min(displacement + moveSpeed, 2.0f);
+		displacement = min(displacement + horizontalMoveSpeed, 2.0f);
 	}
 	else if (leftPressed)
 	{
-		displacement = max(displacement - moveSpeed, -2.0f);
+		displacement = max(displacement - horizontalMoveSpeed, -2.0f);
 	}
 	speed += acceleration;
+	for (int i = 0; i < 3; i++)
+	{
+		checkpoints[i].zPosition += speed * 0.01f;
+		if (checkpoints[i].zPosition > 0.f)
+		{
+			CreateCheckpoints();
+			break;
+		}
+	}
+	checkerboardZOffset += speed * 0.006f;
 }
 
 void checkCollision()
 {
 	int checkpointIndex = CheckCollision(displacement);
 	if (checkpointIndex == -1) return;
+	if (checkpoints[checkpointIndex].active == false) return;
+	
+	checkpoints[checkpointIndex].active = false;
 
-	if (checkpoints[checkpointIndex].isYellow)
-	{
-		setHappy();
-	}
-	else
-	{
-		setFaint();
-	}
+	if (checkpoints[checkpointIndex].isYellow) setHappy();
+	else setFaint();
 }
 
 void mainLoop(GLFWwindow* window)
 {
 	while (!glfwWindowShouldClose(window))
 	{
-		timeStamp += 0.01f;
-		display();
 		glfwSwapBuffers(window);
 		glfwPollEvents();
+		if (pause) continue;
+		timeStamp += 0.01f;
+		score += 0.01f;
+		display();
 		checkCollision();
 		calculateValues();
 	}
@@ -1046,7 +1145,7 @@ int main(int argc, char** argv)   // Create Main Function For Bringing It All To
 	//glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // uncomment this if on MacOS
 
 	int width = 1000, height = 800;
-	window = glfwCreateWindow(width, height, "CEGN477 HW3 Bunny Run", NULL, NULL);
+	window = glfwCreateWindow(width, height, "CENG477 HW3 Bunny Run", NULL, NULL);
 
 	if (!window)
 	{
@@ -1089,4 +1188,3 @@ int main(int argc, char** argv)   // Create Main Function For Bringing It All To
 
 	return 0;
 }
-
