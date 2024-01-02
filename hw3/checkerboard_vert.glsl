@@ -25,40 +25,12 @@ out vec4 color;
 out vec4 fragPos;
 
 void main(void)
-{
-	// First, convert to world coordinates. This is where
-	// lighting computations must be performed. inVertex
-	// is NOT in homogeneous coordinates. inNormal has three
-	// components. For computing the normal transformation
-	// matrix we use the upper 3x3 part of the modeling
-	// matrix.
-	 
+{	 
 	vec4 pWorld = modelingMatrix * vec4(inVertex, 1);
-	vec3 nWorld = inverse(transpose(mat3x3(modelingMatrix))) * inNormal;
 
-	// Compute lighting. We assume lightPos and eyePos are in world
-	// coordinates.
-
-	vec3 L = normalize(lightPos - vec3(pWorld));
-	vec3 V = normalize(eyePos - vec3(pWorld));
-	vec3 H = normalize(L + V);
-	vec3 N = normalize(nWorld);
-
-	float NdotL = dot(N, L); // for diffuse component
-	float NdotH = dot(N, H); // for specular component
-
-	vec3 diffuseColor = I * kd * max(0, NdotL);
 	vec3 ambientColor = Iamb * ka;
 
-	// We update the front color of the vertex. This value will be sent
-	// to the fragment shader after it is interpolated at every fragment.
-	// Front color specifies the color of a vertex for a front facing
-	// primitive.
-
-	color = vec4(diffuseColor + ambientColor, 1);
-
-	// Transform the vertex with the product of the projection, viewing, and
-	// modeling matrices.
+	color = vec4(ambientColor, 1);
 
     gl_Position = projectionMatrix * viewingMatrix * modelingMatrix * vec4(inVertex, 1);
 

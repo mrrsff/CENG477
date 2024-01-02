@@ -1,12 +1,22 @@
 #version 330 core
 
-in vec4 color;
-out vec4 fragColor;
+// Input texture coordinates
+in vec2 TexCoord;
 
-void main(void)
+// Output color
+out vec4 FragColor;
+
+// Uniform sampler for the background image
+uniform sampler2D backgroundTexture;
+
+void main()
 {
-	// Set the color of this fragment to the interpolated color
-	// value computed by the rasterizer.
+    // Reverse the texture coordinates horizontally
+    vec2 flippedTexCoord = vec2(TexCoord.x, 1.0 - TexCoord.y);
 
-	fragColor = color;
+    // Sample the background texture using the flipped texture coordinates
+    vec4 background = texture(backgroundTexture, flippedTexCoord);
+
+    // Output the sampled color as the final color
+    FragColor = background;
 }
